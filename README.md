@@ -14,7 +14,7 @@ A Clojure library for managing application configuraiton.
 
 ## Usage
 
-lein `[cfg "1.0.0"]`
+lein `[org.dave/cfg "1.0.0"]`
 
 ## Tutorial
 
