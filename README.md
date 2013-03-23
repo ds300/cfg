@@ -1,6 +1,6 @@
 # cfg
 
-A Clojure library for managing application configuraiton.
+Manage your options.
 
 ## Features
 
@@ -65,6 +65,8 @@ The [Midje](https://github.com/marick/Midje) [test suite](http://github.com/ds30
       :merge   into)
     
 this sets up a map that looks like this
+
+
     {
       :data-paths {
         :dictionary "/usr/share/dict/words"
