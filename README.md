@@ -22,23 +22,24 @@ The [Midje](https://github.com/marick/Midje) [test suite](http://github.com/ds30
 
 ## Quick Example
 
-    ; make a separate namespace for handling all your config needs
+Make a separate namespace for handling all your config needs
+
     (ns my-proj.cfg
       (:use cfg.core))
     
     (init) ; this just evals src/cfg/cfg.clj in my-proj.cfg
     
     
-    ; now you can define you option tree with defopt and defopts
+Now you can define you option tree with `defopt` and `defopts`
     
     (defopt :num-cats
       :default     50
       :parse       #(Long. %)  ; this gets called when parsing options from command line
       :validate    #(>= % 1)   ; IllegalArgumentException when this returns false
-      :help-string "The number of cats to use."  ; this gets used by the fn "print-help"
-      :aliases     ["c" "-cats"]) ; at shell> myprog -c 50, or myprog --cats 50
+      :help-string "The number of cats to use."  ; this gets used by the fn print-help
+      :aliases     ["c" "-cats"]) ; causes -c or --cats to be used as unix-style cli args.
     
-    ; defopts lets you nest options inside a container map
+`defopts` lets you nest options inside a container map
     
     (defopts :data-paths
     
@@ -51,20 +52,27 @@ The [Midje](https://github.com/marick/Midje) [test suite](http://github.com/ds30
       (defopt :cat-photo-dir
         ; you don't need to specify a default
         :private true)) ; means that this opt can't be set when parsing cli args.
-    
+
+To specify that an option should be a boolean flag, use `:bool true`
     
     (defopt :use-catnip
-      :bool    true       ; this option becomes a boolean flag
+      :bool    true
       :default false
       :aliases ["n" "-catnip"]
       :help-string "Enables happy mode.")
+      
+If the user specifies `-n`, `:use-catnip` gets set to `(not `whatever it currently is`)`.
+
+You can also specify that options should be merged.
     
     (defopt :cat-names
       :default ["muggins" "felix"]
       :parse   #(clojure.string/split % #",")
       :merge   into)
+      
+The merge funciton gets called with the current value first.
     
-This translates to:
+All of this translates to:
 
     {
       :data-paths {
@@ -76,19 +84,22 @@ This translates to:
       :cat-names  ["muggins" "felix"]
     }
 
-Now use the namespace you just created
+Now `require` the namespace you just created
     
     (ns my-proj.core
       (:require [my-proj.cfg :as cfg]))
-    
-    ; you can merge a config file at any point.
-    (cfg/merge-opts! {:cat-names ["sooty" "bilbo"]})
-    
+      
     (defn usage []
       (println "USAGE: ")
       (println "    lein run <in_path> [options]\n")
       (cfg/print-help)
       (System/exit 0))
+    
+you can merge a config file at any point.
+
+    (cfg/merge-opts! {:cat-names ["sooty" "bilbo"]})
+    
+`parse-cli-args!` does all the hard work.
     
     (defn -main [& args]
       (let [[in_path & more?] (try (cfg/parse-cli-args! args)
@@ -100,32 +111,37 @@ Now use the namespace you just created
         (println "numer of cats being used:" (cfg/opt :num-cats))
         (println "using catnip:"             (true? (cfg/opt :use-catnip)))
         (println "relevant names:"           (cfg/opt :cat-names))))
-    
+        
+Sample output:
+
     (-main "-n" "path/to/data" "-:cat-names" "rex,fido,rover" "--cats" "503472")
-    ;  taking data from: path/to/data
-    ;  my dictionary is here: /usr/share/dict/words
-    ;  numer of cats being used: 503472
-    ;  using catnip: true
-    ;  relevant names: [mittens felix sooty bilbo rex fido rover]
+    
+    stdout=> taking data from: path/to/data
+             my dictionary is here: /usr/share/dict/words
+             numer of cats being used: 503472
+             using catnip: true
+             relevant names: [mittens felix sooty bilbo rex fido rover]
     
     (-main "-f" "undefined alias")
-    ;  java.lang.IllegalArgumentException: Invalid or private option: -f
-    ;  USAGE: 
-    ;      lein run <in_path> [options]
-    ;  
-    ;  OPTIONS
-    ;  =======
-    ;  
-    ;      -n --catnip
-    ;          Enables happy mode.
-    ;      -d --dict
-    ;          Where the dictionary at?
-    ;      -c --cats
-    ;          The number of cats to use.
+    
+    stdout => java.lang.IllegalArgumentException: Invalid or private option: -f
+              USAGE: 
+                  lein run <in_path> [options]
+  
+              OPTIONS
+              =======
+  
+                  -n --catnip
+                      Enables happy mode.
+                  -d --dict
+                      Where the dictionary at?
+                  -c --cats
+                      The number of cats to use.
 
 ## API
 
-    defopt [k & args]
+`defopt [k & args]`
+
       defines an option. args can be any, or none, of the following:
 
       :default  x        Sets the inital value of the opt to value
@@ -140,19 +156,24 @@ Now use the namespace you just created
                          used to set this opt at the command line.
       :help-string s     When :aliases is also set, this is printed when `print-help` is invoked.
 
-    defopts [k & args]
+`defopts [k & args]`
+
       defines an option container. args should be a list of `defopt` or `defopts` calls
 
-    delopt! [& ks]
+`delopt! [& ks]`
+
       deletes the option at ks
 
-    opt [& ks]
+`opt [& ks]`
+
       gets the option at ks. Throws IllegalArgumentException if it doesn't exist.
 
-    opta [alias]
+`opta [alias]`
+
       gets the option with the given alias. Throws IllegalArgumentException if it doesn't exist.
 
-    parse-cli-args! [args] [args keyfn]
+`parse-cli-args! [args] [args keyfn]`
+
       parses options from the command line. keyfn is used to process options passed as key-paths.
       i.e. [-:some:value blah] with keyfn identity results in {"some" {"value" "blah"}}. The
       default keyfn is clojure.core/keyword.
@@ -162,25 +183,36 @@ Now use the namespace you just created
         - trying to set a private opt
         - trying to set a non-existent opt
 
-    merge-opts! [m] [ks m]
+`merge-opts! [m] [ks m]`
+
     Merges option map with the given m, presumably from a trusted source
 
 
-    merge-public-opts! [m] [ks m]
+`merge-public-opts! [m] [ks m]`
+
       Merges option map with the given one, disallowing modification of private options
 
-    merge-unparsed-opts! [m] [ks m]
+`merge-unparsed-opts! [m] [ks m]`
+
       Merges option map with the given one, parsing options first, and disallowing modification of private options"
 
-    set-opt! [ks v]
+`set-opt! [ks v]`
+
       Sets the option at ks to v
       
 
-    print-help []
+`print-help []`
+
       Call without arguments. Prints the set of options which have both help strings and cli aliases
 
 
-
+### Todo
+- Atomic merges
+- Allow other expressions inside `defopts`
+- Change `:help-string` to `:help`
+- Option 'types' e.g. flag, int, uint, nint, doubles, csv, custom.
+- Throw exceptions for invalid defopt args incl. alias re-use.
+- More subtle control over args parsing, e.g. take-while, take-n.
 
 ## License
 
