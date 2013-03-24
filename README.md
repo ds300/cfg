@@ -4,11 +4,13 @@ Manage your options.
 
 ## Features
 
-- File format agnostic. Just load your config into a map and merge it.
+- It's epic good at command line args.
+- If you've got config files, just load them into a map and merge them.
 - Declare options public or private, i.e. whether or not the end-user is able to modify them.
-- Specify aliases for command line usage, and for printing help.
 - Define parsers, validators, and mergers for individual options.
+- It throws exceptions when people do stupid things.
 - If your project is super-duper complex, set up individual config namespaces for different parts of it.
+- It's probably the best Clojure library that does exactly what it does.
 
 ## Usage
 
