@@ -4,13 +4,11 @@ Manage your options.
 
 ## Features
 
-- Define a map of configuration options.
-- Declare options public or private, i.e. whether or not the end-user is able to modify them
-- Define aliases for command line usage
-- Define parsers and validators for command line args
-- Define merge functions for individual options
-- Merge entire maps from trusted or untrusted sources.
-
+- File format agnostic. Just load your config into a map and merge it.
+- Declare options public or private, i.e. whether or not the end-user is able to modify them.
+- Specify aliases for command line usage, and for printing help.
+- Define parsers, validators, and mergers for individual options.
+- If your project is super-duper complex, set up individual config namespaces for different parts of it.
 
 ## Usage
 
@@ -46,7 +44,7 @@ The [Midje](https://github.com/marick/Midje) [test suite](http://github.com/ds30
         :default  "/usr/share/dict/words"
         :validate #(.isFile (java.io.File. %)) 
         :aliases  ["d" "-dict"]
-        :help-string "Where is your dictionary, friend?")
+        :help-string "Where the dictionary at?")
     
       (defopt :cat-photo-dir
         ; you don't need to specify a default
@@ -60,18 +58,16 @@ The [Midje](https://github.com/marick/Midje) [test suite](http://github.com/ds30
       :help-string "Enables happy mode.")
     
     (defopt :cat-names
-      :default ["mittens" "felix"]
+      :default ["muggins" "felix"]
       :parse   #(clojure.string/split % #",")
       :merge   into)
     
-this sets up a map that looks like this
-
+This translates to:
 
     {
       :data-paths {
         :dictionary "/usr/share/dict/words"
-        :in-path    nil
-        :out-path   nil
+        :cat-photo-dir nil
       }
       :num-cats   50
       :use-catnip false
@@ -121,7 +117,7 @@ Now use the namespace you just created
     ;      -n --catnip
     ;          Enables happy mode.
     ;      -d --dict
-    ;          Where is your dictionary, friend?
+    ;          Where the dictionary at?
     ;      -c --cats
     ;          The number of cats to use.
 
