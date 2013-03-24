@@ -38,7 +38,7 @@
         `(~(symbol (str (name cmd) "-")) ~(conj ks k) ~@things))))
 
 (defmacro defopts
-  "define an option container. args should be a list of `defopt` or `defopts` calls"
+  "defines an option container. args should be a list of `defopt` or `defopts` calls"
   [k & args]
   `(defopts- [~k] ~@args))
 

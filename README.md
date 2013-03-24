@@ -138,7 +138,7 @@ Now use the namespace you just created
       :parse    fn       The return value of (fn x) is used as this opt's value, 
                          where x is a string given at the command line.
       :merge    fn       The return value of (fn old new) is used as this opt's value.
-      :aliases  [& strs] Each str becomes an alias which, when prefixed with \\-, can be
+      :aliases  [& strs] Each str becomes an alias which, when prefixed with -, can be
                          used to set this opt at the command line.
       :help-string s     When :aliases is also set, this is printed when `print-help` is invoked.
 
