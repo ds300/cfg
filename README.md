@@ -14,7 +14,10 @@ Manage your options.
 
 ## Usage
 
-lein `[org.dave/cfg "1.0.0"]`
+lein
+```Clojure
+[org.dave/cfg "1.0.0"]
+```
 
 ## Tutorial
 
@@ -23,120 +26,140 @@ The [Midje](https://github.com/marick/Midje) [test suite](http://github.com/ds30
 ## Quick Example
 
 Make a separate namespace for handling all your config needs
+```Clojure
+(ns my-proj.cfg
+  (:use cfg.core))
 
-    (ns my-proj.cfg
-      (:use cfg.core))
-    
-    (init) ; this just evals src/cfg/cfg.clj in my-proj.cfg
-    
-    
+(init) ; this just evals src/cfg/cfg.clj in my-proj.cfg
+```
+
 Now you can define you option tree with `defopt` and `defopts`
-    
-    (defopt :num-cats
-      :default     50
-      :parse       #(Long. %)  ; this gets called when parsing options from command line
-      :validate    #(>= % 1)   ; IllegalArgumentException when this returns false
-      :help-string "The number of cats to use."  ; this gets used by the fn print-help
-      :aliases     ["c" "-cats"]) ; causes -c or --cats to be used as unix-style cli args.
-    
+
+```Clojure
+(defopt :num-cats
+  :default     50
+  :parse       #(Long. %)  ; this gets called when parsing options from command line
+  :validate    #(>= % 1)   ; IllegalArgumentException when this returns false
+  :help-string "The number of cats to use."  ; this gets used by the fn print-help
+  :aliases     ["c" "-cats"]) ; causes -c or --cats to be used as unix-style cli args.
+```
+
 `defopts` lets you nest options inside a container map
-    
-    (defopts :data-paths
-    
-      (defopt :dictionary
-        :default  "/usr/share/dict/words"
-        :validate #(.isFile (java.io.File. %)) 
-        :aliases  ["d" "-dict"]
-        :help-string "Where the dictionary at?")
-    
-      (defopt :cat-photo-dir
-        ; you don't need to specify a default
-        :private true)) ; means that this opt can't be set when parsing cli args.
+
+```Clojure
+(defopts :data-paths
+
+  (defopt :dictionary
+    :default  "/usr/share/dict/words"
+    :validate #(.isFile (java.io.File. %)) 
+    :aliases  ["d" "-dict"]
+    :help-string "Where the dictionary at?")
+
+  (defopt :cat-photo-dir
+    ; you don't need to specify a default
+    :private true)) ; means that this opt can't be set when parsing cli args.
+```
 
 To specify that an option should be a boolean flag, use `:bool true`
-    
-    (defopt :use-catnip
-      :bool    true
-      :default false
-      :aliases ["n" "-catnip"]
-      :help-string "Enables happy mode.")
-      
+
+```Clojure
+(defopt :use-catnip
+  :bool    true
+  :default false
+  :aliases ["n" "-catnip"]
+  :help-string "Enables happy mode.")
+```
+
 If the user specifies `-n`, `:use-catnip` gets set to `(not `whatever it currently is`)`.
 
 You can also specify that options should be merged.
-    
-    (defopt :cat-names
-      :default ["muggins" "felix"]
-      :parse   #(clojure.string/split % #",")
-      :merge   into)
-      
+
+```Clojure
+(defopt :cat-names
+  :default ["muggins" "felix"]
+  :parse   #(clojure.string/split % #",")
+  :merge   into)
+```
+
 The merge funciton gets called with the current value first.
     
 All of this translates to:
 
-    {
-      :data-paths {
-        :dictionary "/usr/share/dict/words"
-        :cat-photo-dir nil
-      }
-      :num-cats   50
-      :use-catnip false
-      :cat-names  ["muggins" "felix"]
-    }
+```Clojure
+{
+  :data-paths {
+    :dictionary "/usr/share/dict/words"
+    :cat-photo-dir nil
+  }
+  :num-cats   50
+  :use-catnip false
+  :cat-names  ["muggins" "felix"]
+}
+```
 
 Now `require` the namespace you just created
-    
-    (ns my-proj.core
-      (:require [my-proj.cfg :as cfg]))
-      
-    (defn usage []
-      (println "USAGE: ")
-      (println "    lein run <in_path> [options]\n")
-      (cfg/print-help)
-      (System/exit 0))
-    
+
+```Clojure
+(ns my-proj.core
+  (:require [my-proj.cfg :as cfg]))
+  
+(defn usage []
+  (println "USAGE: ")
+  (println "    lein run <in_path> [options]\n")
+  (cfg/print-help)
+  (System/exit 0))
+```
+
 you can merge a config file at any point.
 
-    (cfg/merge-opts! {:cat-names ["sooty" "bilbo"]})
-    
+```Clojure
+(cfg/merge-opts! {:cat-names ["sooty" "bilbo"]})
+```
+
 `parse-cli-args!` does all the hard work.
-    
-    (defn -main [& args]
-      (let [[in_path & more?] (try (cfg/parse-cli-args! args)
-                                (catch IllegalArgumentException e (do (println e) (usage))))]
-        (when (or more? (not in_path))
-          (usage))
-        (println "taking data from:"         in_path)
-        (println "my dictionary is here:"    (cfg/opt :data-paths :dictionary))
-        (println "numer of cats being used:" (cfg/opt :num-cats))
-        (println "using catnip:"             (true? (cfg/opt :use-catnip)))
-        (println "relevant names:"           (cfg/opt :cat-names))))
-        
+
+```Clojure
+(defn -main [& args]
+  (let [[in_path & more?] (try (cfg/parse-cli-args! args)
+                            (catch IllegalArgumentException e (do (println e) (usage))))]
+    (when (or more? (not in_path))
+      (usage))
+    (println "taking data from:"         in_path)
+    (println "my dictionary is here:"    (cfg/opt :data-paths :dictionary))
+    (println "numer of cats being used:" (cfg/opt :num-cats))
+    (println "using catnip:"             (true? (cfg/opt :use-catnip)))
+    (println "relevant names:"           (cfg/opt :cat-names))))
+```
+
 Sample output:
 
-    (-main "-n" "path/to/data" "-:cat-names" "rex,fido,rover" "--cats" "503472")
-    
+```Clojure
+(-main "-n" "path/to/data" "-:cat-names" "rex,fido,rover" "--cats" "503472")
+```
+
     stdout=> taking data from: path/to/data
              my dictionary is here: /usr/share/dict/words
              numer of cats being used: 503472
              using catnip: true
-             relevant names: [mittens felix sooty bilbo rex fido rover]
-    
-    (-main "-f" "undefined alias")
-    
-    stdout => java.lang.IllegalArgumentException: Invalid or private option: -f
-              USAGE: 
-                  lein run <in_path> [options]
+             relevant names: [muggins felix sooty bilbo rex fido rover]
+
+```Clojure
+(-main "-f" "undefined alias")
+```
+
+    stdout=> java.lang.IllegalArgumentException: Invalid or private option: -f
+             USAGE: 
+                 lein run <in_path> [options]
   
-              OPTIONS
-              =======
+             OPTIONS
+             =======
   
-                  -n --catnip
-                      Enables happy mode.
-                  -d --dict
-                      Where the dictionary at?
-                  -c --cats
-                      The number of cats to use.
+                 -n --catnip
+                     Enables happy mode.
+                 -d --dict
+                     Where the dictionary at?
+                 -c --cats
+                     The number of cats to use.
 
 ## API
 
