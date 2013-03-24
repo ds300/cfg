@@ -140,7 +140,7 @@ Sample output:
 
 ## API
 
-`defopt [k & args]`
+#### `defopt [k & args]`
 
       defines an option. args can be any, or none, of the following:
 
@@ -156,23 +156,23 @@ Sample output:
                          used to set this opt at the command line.
       :help-string s     When :aliases is also set, this is printed when `print-help` is invoked.
 
-`defopts [k & args]`
+#### `defopts [k & args]`
 
       defines an option container. args should be a list of `defopt` or `defopts` calls
 
-`delopt! [& ks]`
+#### `delopt! [& ks]`
 
       deletes the option at ks
 
-`opt [& ks]`
+#### `opt [& ks]`
 
       gets the option at ks. Throws IllegalArgumentException if it doesn't exist.
 
-`opta [alias]`
+#### `opta [alias]`
 
       gets the option with the given alias. Throws IllegalArgumentException if it doesn't exist.
 
-`parse-cli-args! [args] [args keyfn]`
+#### `parse-cli-args! [args] [args keyfn]`
 
       parses options from the command line. keyfn is used to process options passed as key-paths.
       i.e. [-:some:value blah] with keyfn identity results in {"some" {"value" "blah"}}. The
@@ -183,25 +183,25 @@ Sample output:
         - trying to set a private opt
         - trying to set a non-existent opt
 
-`merge-opts! [m] [ks m]`
+#### `merge-opts! [m] [ks m]`
 
     Merges option map with the given m, presumably from a trusted source
 
 
-`merge-public-opts! [m] [ks m]`
+#### `merge-public-opts! [m] [ks m]`
 
       Merges option map with the given one, disallowing modification of private options
 
-`merge-unparsed-opts! [m] [ks m]`
+#### `merge-unparsed-opts! [m] [ks m]`
 
       Merges option map with the given one, parsing options first, and disallowing modification of private options"
 
-`set-opt! [ks v]`
+#### `set-opt! [ks v]`
 
       Sets the option at ks to v
       
 
-`print-help []`
+#### `print-help []`
 
       Call without arguments. Prints the set of options which have both help strings and cli aliases
 
