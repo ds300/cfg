@@ -13,28 +13,98 @@
   `(clojure.core/when ~test
     (fail! ~@args)))
 
+(defmacro fail-when-let [bind & args]
+  `(clojure.core/when-let ~bind
+    (fail! ~@args)))
+
 (defmacro fail-when-not [test & args]
   `(fail-when (clojure.core/not ~test) ~@args))
 
-(defn legit-property? [[k v]]
-  (case k
-    :parse (fn? v)
-    :validate (fn? v)
-    :validate-with (and (vector? v) (every? vector? v))
-    :aliases (and (vector? v) (every? string? v))
-    :take (integer? v)
-    :take-while (fn? v)
-    :merge (fn? v)
-    :description (string? v)
-    :docstring (string? v)
-    :private? true
-    :optional true
-    :default true
-    :seq-parse (fn? v)
+(def base-prop-validators
+  {
+    :parse fn?
+    :seq-parse fn?
+    :validate fn?
+    :alisases #(and (vector? %) (every? string? %))
+    :take integer?
+    :take-while fn?
+    :merge fn?
+    :description string?
+    :docstring string?
+    :default #(do true)
+   })
+
+(def opt-prop-validators (merge base-prop-validators
+  {
+    :private? #(do true)
+  }
+  ))
+
+(def arg-prop-validators (merge base-prop-validators
+  {
+    :optional? #(do true)
+  }
+  ))
+
+(defn legit-opt-prop? [[k v]]
+  (if-let [check (opt-prop-validators k)]
+    (check v)
     false))
 
+(defn legit-arg-prop? [[k v]]
+  (if-let [check (arg-prop-validators k)]
+    (check v)
+    false))
+
+; (defn parse-option [typedef current-value args]
+;   (let [$         typedef
+;         taken     (if-let [take-pred (:take-while $)]
+;                     (take-while take-pred args)
+;                     (take (:take $) args))
+;         n         (count taken)
+;         remaining (drop n args)
+;         parse     (or (:parse $) identity)
+;         merge     (or (:merge $) (fn [a b] b))
+;         seq-parse (:seq-parse $)
+;         things    (if seq-parse
+;                     (seq-parse taken)
+;                     (if (= 1 n)
+;                       (first taken)
+;                       taken))
+;         parsed    (if seq-parse
+;                     (mapv parse things)
+;                     (parse things))
+;         merged    (merge current-value parsed)]
+;     [merged remaining]))
+
+; (defn parse-argument [typedef current-value args]
+;   (let [$         typedef
+;         taken     (if-let [take-pred (:take-while $)]
+;                     (take-while take-pred args)
+;                     (take (:take $) args))
+;         n         (count taken)
+;         remaining (drop n args)
+;         parse     (or (:parse $) identity)
+;         merge     (or (:merge $) (fn [a b] b))
+;         seq-parse (:seq-parse $)
+;         things    (if seq-parse
+;                     (seq-parse taken)
+;                     (if (= 1 n)
+;                       (first taken)
+;                       taken))
+;         parsed    (if (:optional? $)
+;                     (try
+;                       (if seq-parse
+;                         (mapv parse things)
+;                         (parse things))
+;                       (catch Exception e nil)))]
+;     (if (nil? parsed)
+;       [nil args]
+;       [(merge current-value parsed) remaining])))
+
+
 (defn ensure-legit-property [p]
-  (if (legit-property? p)
+  (if (legit-opt-property? p)
     p
     (fail! "Illegal property definition.")))
 
@@ -79,7 +149,7 @@
   :merge (fn [a b] (not a)))
 
 (defopttype optional
-  :optional true)
+  :optional? true)
 
 (defopttype csv
   :seq-parse #(clojure.string/split (first %) #","))
@@ -100,6 +170,7 @@
   (def-opts! [me ks docstring])
   (def-task [me ks docstring])
   (def-task! [me ks docstring])
+  (parse-cli-args [me args] [me args dispatches])
   (scopes [me] [me ks])
   (key-in-scope? [me ks])
   (set-opt [me ks v] "sets an opt, validating")
@@ -119,6 +190,79 @@
         (for [[k v] kids]
           (map #(into [k] %)
             (cons [] (symbol-scopes v))))))))
+
+(defn make-alias-map [ks as]
+  (if (seq as)
+    (into {} (for [a as] [a ks]))
+    {}))
+
+(defmacro rassoc-in [who field ks v]
+  `(clojure.core/assoc-in ~who (clojure.core/into [~field] ~ks) ~v))
+
+(defmacro rupdate-in [who field ks f & args]
+  `(clojure.core/update-in ~who (clojure.core/into [~field] ~ks) ~f ~@args))
+
+(defn someget [pred coll]
+  (seq (filter pred coll)))
+
+(defrecord context [docstring tasks args aliases opts metadata]
+
+  (assoc-opt!
+    "Associates an option in this context, without checking semantic validity."
+    [me ks typedef]
+    (-> me
+      (assoc :aliases (merge aliases (make-alias-map ks (:aliases typedef))))
+      (rassoc-in :opts ks (:default typedef))
+      (rassoc-in :metadata ks typedef)))
+
+  (assoc-opt
+    "Associates an option in this context, checking for semantic validity first.
+    Bad semantics cause IllegalArgumentException."
+    [me ks typedef]
+    (fail-when (get-in metadata ks) "There's already an option at " ks)
+    (fail-when-let [bad (someget (complement legit-opt-prop?) (seq typedef))]
+      "Illegal opt propert(y|ies): " ks)
+    (fail-when-let [bad (someget (into #{} (:aliases typedef)) (keys aliases))]
+      "Alias(es)? already in use: " bad)
+    (assoc-opt! me ks typedef))
+
+  (assoc-opts!
+    "Associates an option group in this context, without validation."
+    [me ks docstring]
+    (-> me
+      (rassoc-in :metadata ks {:__docstring docstring})
+      (rassoc-in :opts ks {})))
+  
+  (assoc-opts
+    "Associates an option group in this context, with validation."
+    [me ks docstring]
+    (fail-when (get-in metadata ks) "Option group at " ks " already exists")
+    (assoc-opts! me ks docstring))
+  
+  (assoc-arg!
+    "Associates an arg in this context, without validation."
+    [me k typedef]
+    (-> me
+      (rassoc-in :opts [k] (:default typedef))
+      (rupdate-in :args [] conj k)
+      (rassoc-in :metadata [k] typedef)))
+  
+  (assoc-arg
+    "Associates an arg in this context, with validation."
+    [me k typedef]
+    (fail-when (metadata k) "Can't create arg. Key " k " already in use.")
+    )
+  
+  (assoc-task! [me nm ctx]
+    (rassoc-in me :tasks [nm] ctx))
+  (get-opts
+    ([me] (get-opts me []))
+    ([me [t & others :as ts]]
+      (if t
+        (if-let [subcontext (tasks t)]
+          (merge opts (get-opts subcontext others))
+          (fail! "No task at " ts))
+        opts)))
 
 (defrecord cfg-context [docstring aliases metadata opts]
   CFGContext
@@ -189,6 +333,26 @@
     (fail-when-not (symbol? (last ks)) "Task names must be a symbol.")
     ; TODO more verification
     (def-task! me ks docstring))
+
+
+  (parse-cli-args [me args]
+    (let [ctx (atom me)
+          taskpath (atom [])
+          current-args (atom (metadata :__args))
+          current-tasks (atom (into #{} (filter symbol? (keys metadata))))
+          reset-ct!     #(reset! current-tasks (into #{} (filter symbol? (keys (get-in metadata @taskpath)))))]
+      (loop [[arg & more] args]
+        (when arg
+          (if (and (not-empty current-tasks) (empty? current-args))
+            (let [task (symbol arg)]
+              (if-not (@current-tasks task)
+                (fail! "\""arg"\" is not a valid task")
+                (do
+                  (swap! taskpath conj task)
+                  (reset-ct!)
+                  (reset! current-args (get-in metadata @taskpath))
+                  (recur more))))
+            (if (empty? current-args)))))))
   )
 
 
@@ -269,3 +433,4 @@
                   ~(with-meta `(~s (deref ~ctx-sym) ~(conj ks k) ~@others) (meta form))))
               body))
       (deref ~ctx-sym))))
+
