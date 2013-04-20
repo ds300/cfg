@@ -115,5 +115,10 @@
   :seq-parse #(clojure.string/split (first %) #"\."))
 
 (defopttype multi
-  :seq-parse vec)
+  :seq-parse vec
+  :take nil)
 
+(defn unbounded-multi-arg? [typedef]
+  (and
+    (:seq-parse typedef)
+    (not (:take typedef))))

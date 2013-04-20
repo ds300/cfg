@@ -48,6 +48,9 @@
           false)
         true))))
 
+(defn re-pattern? [thing]
+  (instance? java.util.regex.Pattern thing))
+
 (defn take-while-unthrown [pred [head & tail :as coll]]
   (when (seq coll)
     (try
