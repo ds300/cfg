@@ -10,21 +10,7 @@
       IllegalArgumentException.
       throw)))
 
-(defn is [obj]
-  (fn [x]
-    (= obj x)))
 
-(defmacro conds
-  "this is hella useful, but I don't think i need it here"
-  [v & things]
-  (let [last-resort (last things)
-        clauses (partition-all 2 (butlast things))]
-    `(let [v# ~v]
-      (cond
-      ~@(apply concat
-          (for [[pred branch] clauses]
-            [`(~pred v#) branch]))
-      :else ~last-resort))))
 
 (defn merge-typedefs [a b]
   (loop [acc a [[k v :as e] & more] (seq b)]
@@ -60,30 +46,18 @@
         _                 (error-if-not (even? (count typeargs))
                               "odd number of args")
 
-        _ (println "1")
-
         typedef           (apply hash-map typeargs)
-
-        _ (println "2")
 
         sugar             (group-by type sugar)
 
-        _ (println "3")
-
         _                 (validate-sugar sugar)
-
-        _ (println "4")
 
         mixins            (process-mixins
                             (or (first (sugar clojure.lang.PersistentVector)) []))
 
-        _ (println "5")
-
         description       (if-let [d (first (sugar java.lang.String))]
                             {:description d}
                             {})
-
-        _ (println "6")
 
         base              (reduce merge-typedefs base-type (conj mixins description))]
 
@@ -101,31 +75,31 @@
   :default false
   :parse #(Boolean. %))
 
-(defparamtype integer
-  "Integer"
-  :parse #(Long. %))
+; (defparamtype int64
+;   "Integer"
+;   :parse #(Long. %))
 
-(defparamtype integer32
-  [integer]
-  :parse #(Integer. %))
+; (defparamtype int32
+;   [integer]
+;   :parse #(Integer. %))
 
-(defparamtype uint
-  "Integer >= 0"
-  [integer]
-  :validators [#(>= % 0)])
+; (defparamtype uint
+;   "Integer >= 0"
+;   [integer]
+;   :validators [#(>= % 0)])
 
-(defparamtype uint32
-  [uint]
-  :parse #(Integer. %))
+; (defparamtype uint32
+;   [uint]
+;   :parse #(Integer. %))
 
-(defparamtype nint
-  "Integer >= 1"
-  [integer]
-  :validators [pos?])
+; (defparamtype nint
+;   "Integer >= 1"
+;   [integer]
+;   :validators [pos?])
 
-(defparamtype nint32
-  [nint]
-  :parse #(Integer. %))
+; (defparamtype nint32
+;   [nint]
+;   :parse #(Integer. %))
 
 ; (defparamtype csv)
 
