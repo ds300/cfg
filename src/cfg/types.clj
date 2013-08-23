@@ -2,7 +2,7 @@
   "Yo. This is the type system of cfg."
   (:require [cfg.utils :refer :all]))
 
-(def base-type {:take 1 :validators []})
+(def base-type {})
 
 (defmacro error-if-not [thing msg]
   `(when-not ~thing
@@ -30,9 +30,10 @@
   (loop [acc a [[k v :as e] & more] (seq b)]
     (if e
       (case k
-        :add-validator (recur more (update-in acc [:validators] conj v))
+        :add-validator
+          (recur (update-in acc [:validators] (fnil conj []) v) more)
         ; default
-        (recur more (conj acc e)))
+        (recur (conj acc e) more))
       acc)))
 
 (defmacro validate-sugar [sugar]
@@ -44,7 +45,7 @@
     (error-if-not (every? #(= 1 (count %)) (vals ~sugar))
       "too many arguments given")))
 
-(defmacro process-mixins [ms]
+(defn process-mixins [ms]
   (vec
     (for [m ms]
       (if (fn? m)
@@ -59,18 +60,30 @@
         _                 (error-if-not (even? (count typeargs))
                               "odd number of args")
 
+        _ (println "1")
+
         typedef           (apply hash-map typeargs)
+
+        _ (println "2")
 
         sugar             (group-by type sugar)
 
+        _ (println "3")
+
         _                 (validate-sugar sugar)
+
+        _ (println "4")
 
         mixins            (process-mixins
                             (or (first (sugar clojure.lang.PersistentVector)) []))
 
+        _ (println "5")
+
         description       (if-let [d (first (sugar java.lang.String))]
                             {:description d}
                             {})
+
+        _ (println "6")
 
         base              (reduce merge-typedefs base-type (conj mixins description))]
 
@@ -114,138 +127,138 @@
   [nint]
   :parse #(Integer. %))
 
-(defparamtype csv)
+; (defparamtype csv)
 
 
-(defn ok [& args] true)
+; (defn ok [& args] true)
 
-(defn validators [& args]
-  (into {}
-    (for [[k validate description] (partition-all 3 args)]
-      [k [validate description]])))
+; (defn validators [& args]
+;   (into {}
+;     (for [[k validate description] (partition-all 3 args)]
+;       [k [validate description]])))
 
-(def base-validators
-  (validators
-    :parse       (por nil? fn?)                        "function or nil"
-    :seq-parse   (por nil? fn?)                        "function or nil"
-    :validate    (por nil? fn?)                        "function or nil"
-    :aliases    #(and (vector? %) (every? string? %))  "vector of strings"
-    :take        integer?                              "integer"
-    :take-while  fn?                                   "function"
-    :merge       fn?                                   "function"
-    :description string?                               "string"
-    :docstring   string?                               "string"
-    :default     ok                                    "anything"
-))
-
-
-(defn legit-pred-maker [validmap]
-  (fn [[k v]]
-    (let [[validate _] (validmap k)]
-      (and validate (validate v)))))
-
-(defn prop-ensurer-maker [validmap pred]
-  (fn [[k v :as thing]]
-    (if (pred thing)
-      thing
-      (fail!
-        (let [[_ description] (validmap k)]
-          (if description
-            (str "Bad argument property value for " k ". Expecting " description ".")
-            (str "Trying to set nonexistent argument property " k)))))))
-
-(def ensure-legit-arg-prop (prop-ensurer-maker arg-prop-validators legit-arg-prop?))
-(def ensure-legit-opt-prop (prop-ensurer-maker opt-prop-validators legit-opt-prop?))
+; (def base-validators
+;   (validators
+;     :parse       (por nil? fn?)                        "function or nil"
+;     :seq-parse   (por nil? fn?)                        "function or nil"
+;     :validate    (por nil? fn?)                        "function or nil"
+;     :aliases    #(and (vector? %) (every? string? %))  "vector of strings"
+;     :take        integer?                              "integer"
+;     :take-while  fn?                                   "function"
+;     :merge       fn?                                   "function"
+;     :description string?                               "string"
+;     :docstring   string?                               "string"
+;     :default     ok                                    "anything"
+; ))
 
 
-(def base-type {:take 1, :default nil})
+; (defn legit-pred-maker [validmap]
+;   (fn [[k v]]
+;     (let [[validate _] (validmap k)]
+;       (and validate (validate v)))))
 
-(defmacro defthingtype [thing tsym & args]
-  (let [[mixins properties] (split-with symbol? args)]
-    ; make sure we can shove the properties in a map
-    (fail-when-not (even? (count properties)) "defopttype expects an even number of forms")
-    ; makse sure the mixins are actual opttypes.
-    (fail-when-let [bad (seq (filter (complement @OPT_TYPES) mixins))]
-      "Undefined opttype(s): " bad)
+; (defn prop-ensurer-maker [validmap pred]
+;   (fn [[k v :as thing]]
+;     (if (pred thing)
+;       thing
+;       (fail!
+;         (let [[_ description] (validmap k)]
+;           (if description
+;             (str "Bad argument property value for " k ". Expecting " description ".")
+;             (str "Trying to set nonexistent argument property " k)))))))
+
+; (def ensure-legit-arg-prop (prop-ensurer-maker arg-prop-validators legit-arg-prop?))
+; (def ensure-legit-opt-prop (prop-ensurer-maker opt-prop-validators legit-opt-prop?))
+
+
+; (def base-type {:take 1, :default nil})
+
+; (defmacro defthingtype [thing tsym & args]
+;   (let [[mixins properties] (split-with symbol? args)]
+;     ; make sure we can shove the properties in a map
+;     (fail-when-not (even? (count properties)) "defopttype expects an even number of forms")
+;     ; makse sure the mixins are actual opttypes.
+;     (fail-when-let [bad (seq (filter (complement @OPT_TYPES) mixins))]
+;       "Undefined opttype(s): " bad)
     
-    (let [ensure-legit-prop (eval (symbol (str "ensure-legit-" thing "-prop")))
-          properties  (into {}
-                        (map (comp ensure-legit-prop eval vec)
-                          (partition 2 properties)))]
-      (swap! OPT_TYPES assoc tsym
-        (merge
-          (reduce merge {} (map @OPT_TYPES mixins))
-          properties))))
-  true)
+;     (let [ensure-legit-prop (eval (symbol (str "ensure-legit-" thing "-prop")))
+;           properties  (into {}
+;                         (map (comp ensure-legit-prop eval vec)
+;                           (partition 2 properties)))]
+;       (swap! OPT_TYPES assoc tsym
+;         (merge
+;           (reduce merge {} (map @OPT_TYPES mixins))
+;           properties))))
+;   true)
 
-(defn validate-type-map [typedef]
-  (cond
-    ()
-    :else :everythings-a-okay))
-
-
-
-(defn create-type-map [mixins typedef]
-  (let [typedef (merge (reduce merge {} mixins) typedef)]
-    (do (validate-type-map typedef)
-      typedef)))
-
-(defmacro defopttype [nm & args]
-  `(def ~nm (create-type-map 
-              ~(take-while symbol? args)
-              ~(into {} (drop-while symbol? args)))))
+; (defn validate-type-map [typedef]
+;   (cond
+;     ()
+;     :else :everythings-a-okay))
 
 
-(defopttype int32
-  :parse #(Integer. %)
-  :description "integer")
 
-(defopttype uint32
-  int
-  :validate #(>= % 0)
-  :description "integer >= 0")
+; (defn create-type-map [mixins typedef]
+;   (let [typedef (merge (reduce merge {} mixins) typedef)]
+;     (do (validate-type-map typedef)
+;       typedef)))
 
-(defopttype nint32 
-  int
-  :validate pos?
-  :description "integer > 0")
-
-(defopttype int
-  :parse #(Long. %)
-  :description "integer")
-
-(defopttype uint
-  int
-  :validate #(>= % 0)
-  :description "integer >= 0")
-
-(defopttype nint 
-  int
-  :validate pos?
-  :description "integer > 0")
+; (defmacro defopttype [nm & args]
+;   `(def ~nm (create-type-map 
+;               ~(take-while symbol? args)
+;               ~(into {} (drop-while symbol? args)))))
 
 
-(defopttype flag
-  :take 0
-  :merge (fn [a b] (not a)))
+; (defopttype int32
+;   :parse #(Integer. %)
+;   :description "integer")
 
-(defopttype optional
-  :optional? true)
+; (defopttype uint32
+;   int
+;   :validate #(>= % 0)
+;   :description "integer >= 0")
 
-(defopttype csv
-  :seq-parse #(clojure.string/split (first %) #","))
+; (defopttype nint32 
+;   int
+;   :validate pos?
+;   :description "integer > 0")
 
-(defopttype colon-sv
-  :seq-parse #(clojure.string/split (first %) #":"))
+; (defopttype int
+;   :parse #(Long. %)
+;   :description "integer")
 
-(defopttype psv
-  :seq-parse #(clojure.string/split (first %) #"\."))
+; (defopttype uint
+;   int
+;   :validate #(>= % 0)
+;   :description "integer >= 0")
 
-(defopttype multi
-  :seq-parse vec
-  :take nil)
+; (defopttype nint 
+;   int
+;   :validate pos?
+;   :description "integer > 0")
 
-(defn unbounded-multi-arg? [typedef]
-  (and
-    (:seq-parse typedef)
-    (not (:take typedef))))
+
+; (defopttype flag
+;   :take 0
+;   :merge (fn [a b] (not a)))
+
+; (defopttype optional
+;   :optional? true)
+
+; (defopttype csv
+;   :seq-parse #(clojure.string/split (first %) #","))
+
+; (defopttype colon-sv
+;   :seq-parse #(clojure.string/split (first %) #":"))
+
+; (defopttype psv
+;   :seq-parse #(clojure.string/split (first %) #"\."))
+
+; (defopttype multi
+;   :seq-parse vec
+;   :take nil)
+
+; (defn unbounded-multi-arg? [typedef]
+;   (and
+;     (:seq-parse typedef)
+;     (not (:take typedef))))
