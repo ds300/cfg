@@ -2,7 +2,120 @@
   "Yo. This is the type system of cfg."
   (:require [cfg.utils :refer :all]))
 
-(def TYPES (atom {}))
+(def base-type {:take 1 :validators []})
+
+(defmacro error-if-not [thing msg]
+  `(when-not ~thing
+    (-> (str "invalid parameter type definition: " ~msg)
+      IllegalArgumentException.
+      throw)))
+
+(defn is [obj]
+  (fn [x]
+    (= obj x)))
+
+(defmacro conds
+  "this is hella useful, but I don't think i need it here"
+  [v & things]
+  (let [last-resort (last things)
+        clauses (partition-all 2 (butlast things))]
+    `(let [v# ~v]
+      (cond
+      ~@(apply concat
+          (for [[pred branch] clauses]
+            [`(~pred v#) branch]))
+      :else ~last-resort))))
+
+(defn merge-typedefs [a b]
+  (loop [acc a [[k v :as e] & more] (seq b)]
+    (if e
+      (case k
+        :add-validator (recur more (update-in acc [:validators] conj v))
+        ; default
+        (recur more (conj acc e)))
+      acc)))
+
+(defmacro validate-sugar [sugar]
+  `(do
+    (error-if-not (every? #{java.lang.String clojure.lang.PersistentVector}
+                     (keys ~sugar))
+      "expecting either description, mixin list, both, or none")
+
+    (error-if-not (every? #(= 1 (count %)) (vals ~sugar))
+      "too many arguments given")))
+
+(defmacro process-mixins [ms]
+  (vec
+    (for [m ms]
+      (if (fn? m)
+        {:add-validator m}
+        m))))
+
+(defn make-typedef
+  "makes a type definition"
+  [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+
+        _                 (error-if-not (even? (count typeargs))
+                              "odd number of args")
+
+        typedef           (apply hash-map typeargs)
+
+        sugar             (group-by type sugar)
+
+        _                 (validate-sugar sugar)
+
+        mixins            (process-mixins
+                            (or (first (sugar clojure.lang.PersistentVector)) []))
+
+        description       (if-let [d (first (sugar java.lang.String))]
+                            {:description d}
+                            {})
+
+        base              (reduce merge-typedefs base-type (conj mixins description))]
+
+    (merge-typedefs base typedef)))
+
+(defmacro defparamtype [nm & args]
+  `(def ~nm (make-typedef ~@args)))
+
+;; do diferent types for cmd and json
+
+
+
+(defparamtype bool
+  "Boolean"
+  :default false
+  :parse #(Boolean. %))
+
+(defparamtype integer
+  "Integer"
+  :parse #(Long. %))
+
+(defparamtype integer32
+  [integer]
+  :parse #(Integer. %))
+
+(defparamtype uint
+  "Integer >= 0"
+  [integer]
+  :validators [#(>= % 0)])
+
+(defparamtype uint32
+  [uint]
+  :parse #(Integer. %))
+
+(defparamtype nint
+  "Integer >= 1"
+  [integer]
+  :validators [pos?])
+
+(defparamtype nint32
+  [nint]
+  :parse #(Integer. %))
+
+(defparamtype csv)
+
 
 (defn ok [& args] true)
 
@@ -13,10 +126,10 @@
 
 (def base-validators
   (validators
-    :parse       fn?                                   "function"
-    :seq-parse   fn?                                   "function"
-    :validate    fn?                                   "function"
-    :alisases    #(and (vector? %) (every? string? %)) "vector of strings"
+    :parse       (por nil? fn?)                        "function or nil"
+    :seq-parse   (por nil? fn?)                        "function or nil"
+    :validate    (por nil? fn?)                        "function or nil"
+    :aliases    #(and (vector? %) (every? string? %))  "vector of strings"
     :take        integer?                              "integer"
     :take-while  fn?                                   "function"
     :merge       fn?                                   "function"
@@ -25,24 +138,11 @@
     :default     ok                                    "anything"
 ))
 
-(def opt-prop-validators (merge base-validators (validators
-  :private?  ok                          "anything"
-  :starts-with (por re-pattern? string?) "regex pattern or string"
-)))
-
-(def arg-prop-validators (merge base-validators (validators
-  :optional? ok                   "anything"
-  :take      (pand integer? pos?) "integer > 0"
-)))
 
 (defn legit-pred-maker [validmap]
   (fn [[k v]]
     (let [[validate _] (validmap k)]
       (and validate (validate v)))))
-
-(def legit-arg-prop? (legit-pred-maker arg-prop-validators))
-
-(def legit-opt-prop? (legit-pred-maker opt-prop-validators))
 
 (defn prop-ensurer-maker [validmap pred]
   (fn [[k v :as thing]]
@@ -78,14 +178,40 @@
           properties))))
   true)
 
-(defmacro defopttype [& args]
-  `(defthingtype "opt" ~@args))
+(defn validate-type-map [typedef]
+  (cond
+    ()
+    :else :everythings-a-okay))
 
-(defmacro defargtype [& args]
-  `(defthingtype "arg" ~@args))
+
+
+(defn create-type-map [mixins typedef]
+  (let [typedef (merge (reduce merge {} mixins) typedef)]
+    (do (validate-type-map typedef)
+      typedef)))
+
+(defmacro defopttype [nm & args]
+  `(def ~nm (create-type-map 
+              ~(take-while symbol? args)
+              ~(into {} (drop-while symbol? args)))))
+
+
+(defopttype int32
+  :parse #(Integer. %)
+  :description "integer")
+
+(defopttype uint32
+  int
+  :validate #(>= % 0)
+  :description "integer >= 0")
+
+(defopttype nint32 
+  int
+  :validate pos?
+  :description "integer > 0")
 
 (defopttype int
-  :parse #(Integer. %)
+  :parse #(Long. %)
   :description "integer")
 
 (defopttype uint
@@ -93,10 +219,11 @@
   :validate #(>= % 0)
   :description "integer >= 0")
 
-(defopttype natint 
+(defopttype nint 
   int
   :validate pos?
   :description "integer > 0")
+
 
 (defopttype flag
   :take 0

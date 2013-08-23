@@ -1,0 +1,500 @@
+    (pr sugar mixins docstring)))
+(make-param-map "boolean flag" [:coxics :banana :trees])
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (even? (count typeargs)))
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector []))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge
+                            (cons base-type
+                              (conj mixins 
+                                (if docstring
+                                  {:docstring docstring}
+                                  {}))))]
+    (error-if (every? #{java.lang.String clojure.lang.PersistentVector} (keys sugar)))
+    (error-if (every? #(= 1 (count %)) (vals sugar)))
+    
+    (merge base typeargs)))
+(defn error-if [thing]
+  (when thing
+    (-> "invalid parameter type definition"
+      IllegalArgumentException.
+      throw)))
+(make-param-map "boolean flag" [:coxics :banana :trees])
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (even? (count typeargs)))
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector []))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge
+                            (cons base-type
+                              (conj mixins 
+                                (if docstring
+                                  {:docstring docstring}
+                                  {}))))]
+    (error-if (every? #{java.lang.String clojure.lang.PersistentVector} (keys sugar)))
+    (error-if (every? #(= 1 (count %)) (vals sugar)))
+    
+    (merge base typeargs)))
+(def base-type {:take 1})
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (even? (count typeargs)))
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector []))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge
+                            (cons base-type
+                              (conj mixins 
+                                (if docstring
+                                  {:docstring docstring}
+                                  {}))))]
+    (error-if (every? #{java.lang.String clojure.lang.PersistentVector} (keys sugar)))
+    (error-if (every? #(= 1 (count %)) (vals sugar)))
+    
+    (merge base typeargs)))
+(defmacro defparamtype [nm & args]
+  `(def ~nm (make-param-map ~@args)))
+(defparamtype flag
+  "Boolean flag"
+  :default false
+  :merge not)
+(defmacro error-if [thing]
+  `(when ~thing
+    (-> "invalid parameter type definition"
+      IllegalArgumentException.
+      throw)))
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (even? (count typeargs)))
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector []))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge
+                            (cons base-type
+                              (conj mixins 
+                                (if docstring
+                                  {:docstring docstring}
+                                  {}))))]
+    (error-if (every? #{java.lang.String clojure.lang.PersistentVector} (keys sugar)))
+    (error-if (every? #(= 1 (count %)) (vals sugar)))
+    
+    (merge base typeargs)))
+(defparamtype flag
+  "Boolean flag"
+  :default false
+  :merge not)
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (even? (count typeargs)) "odd args")
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector []))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge
+                            (cons base-type
+                              (conj mixins 
+                                (if docstring
+                                  {:docstring docstring}
+                                  {}))))]
+    (error-if (every? #{java.lang.String clojure.lang.PersistentVector} (keys sugar))
+      "bad sugar types")
+    (error-if (every? #(= 1 (count %)) (vals sugar))
+      "bad sugar nums")
+    
+    (merge base typeargs)))
+(defmacro error-if [thing msg]
+  `(when ~thing
+    (-> (str "invalid parameter type definition: " ~msg)
+      IllegalArgumentException.
+      throw)))
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (even? (count typeargs)) "odd args")
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector []))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge
+                            (cons base-type
+                              (conj mixins 
+                                (if docstring
+                                  {:docstring docstring}
+                                  {}))))]
+    (error-if (every? #{java.lang.String clojure.lang.PersistentVector} (keys sugar))
+      "bad sugar types")
+    (error-if (every? #(= 1 (count %)) (vals sugar))
+      "bad sugar nums")
+    
+    (merge base typeargs)))
+(defparamtype flag
+  "Boolean flag"
+  :default false
+  :merge not)
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (odd? (count typeargs)) "odd args")
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector []))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge
+                            (cons base-type
+                              (conj mixins 
+                                (if docstring
+                                  {:docstring docstring}
+                                  {}))))]
+    (error-if (every? #{java.lang.String clojure.lang.PersistentVector} (keys sugar))
+      "bad sugar types")
+    (error-if (every? #(= 1 (count %)) (vals sugar))
+      "bad sugar nums")
+    
+    (merge base typeargs)))
+(defparamtype flag
+  "Boolean flag"
+  :default false
+  :merge not)
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (odd? (count typeargs)) "odd args")
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector []))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge
+                            (cons base-type
+                              (conj mixins 
+                                (if docstring
+                                  {:docstring docstring}
+                                  {}))))]
+    (error-if (every? #{java.lang.String clojure.lang.PersistentVector} (keys sugar))
+      (str "bad sugar types: " (pr-str (keys sugar))))
+    (error-if (every? #(= 1 (count %)) (vals sugar))
+      (str "bad sugar nums: " (vals sugar)))
+    
+    (merge base typeargs)))
+(defparamtype flag
+  "Boolean flag"
+  :default false
+  :merge not)
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (odd? (count typeargs)) "odd args")
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector []))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge
+                            (cons base-type
+                              (conj mixins 
+                                (if docstring
+                                  {:docstring docstring}
+                                  {}))))]
+    (error-if (not (every? #{java.lang.String clojure.lang.PersistentVector}
+                     (keys sugar)))
+      (str "bad sugar types: " (pr-str (keys sugar))))
+    (error-if (not (every? #(= 1 (count %)) (vals sugar)))
+      (str "bad sugar nums: " (vals sugar)))
+    
+    (merge base typeargs)))
+(defparamtype flag
+  "Boolean flag"
+  :default false
+  :merge not)
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (odd? (count typeargs)) "odd args")
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector []))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge
+                            (cons base-type
+                              (conj mixins 
+                                (if docstring
+                                  {:docstring docstring}
+                                  {}))))]
+    (pr sugar mixins docstring base)
+    (error-if (not (every? #{java.lang.String clojure.lang.PersistentVector}
+                     (keys sugar)))
+      (str "bad sugar types: " (pr-str (keys sugar))))
+    (error-if (not (every? #(= 1 (count %)) (vals sugar)))
+      (str "bad sugar nums: " (vals sugar)))
+    
+    (merge base typeargs)))
+(defparamtype flag
+  "Boolean flag"
+  :default false
+  :merge not)
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (odd? (count typeargs)) "odd args")
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector [[]]))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge
+                            (cons base-type
+                              (conj mixins 
+                                (if docstring
+                                  {:docstring docstring}
+                                  {}))))]
+    (pr sugar mixins docstring base)
+    (error-if (not (every? #{java.lang.String clojure.lang.PersistentVector}
+                     (keys sugar)))
+      (str "bad sugar types: " (pr-str (keys sugar))))
+    (error-if (not (every? #(= 1 (count %)) (vals sugar)))
+      (str "bad sugar nums: " (vals sugar)))
+    
+    (merge base typeargs)))
+(defparamtype flag
+  "Boolean flag"
+  :default false
+  :merge not)
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (odd? (count typeargs)) "odd args")
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector [[]]))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge mixins base-type)]
+    (pr sugar mixins docstring base)
+    (error-if (not (every? #{java.lang.String clojure.lang.PersistentVector}
+                     (keys sugar)))
+      (str "bad sugar types: " (pr-str (keys sugar))))
+    (error-if (not (every? #(= 1 (count %)) (vals sugar)))
+      (str "bad sugar nums: " (vals sugar)))
+    
+    (merge base typeargs)))
+(defparamtype flag
+  "Boolean flag"
+  :default false
+  :merge not)
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (odd? (count typeargs)) "odd args")
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector [[]]))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge base-type mixins)]
+    (prn sugar mixins docstring base)
+    (error-if (not (every? #{java.lang.String clojure.lang.PersistentVector}
+                     (keys sugar)))
+      (str "bad sugar types: " (pr-str (keys sugar))))
+    (error-if (not (every? #(= 1 (count %)) (vals sugar)))
+      (str "bad sugar nums: " (vals sugar)))
+    
+    (merge base typeargs)))
+(defparamtype flag
+  "Boolean flag"
+  :default false
+  :merge not)
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if (odd? (count typeargs)) "odd args")
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (first (sugar clojure.lang.PersistentVector [[]]))
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge base-type mixins)]
+    (prn sugar mixins docstring base)
+    (error-if (not (every? #{java.lang.String clojure.lang.PersistentVector}
+                     (keys sugar)))
+      (str "bad sugar types: " (pr-str (keys sugar))))
+    (error-if (not (every? #(= 1 (count %)) (vals sugar)))
+      (str "bad sugar nums: " (vals sugar)))
+    
+    (merge base typedef)))
+(defparamtype flag
+  "Boolean flag"
+  :default false
+  :merge not)
+flag
+(defn make-param-map [& args]
+  (let [[sugar typeargs]  (split-with (complement keyword?) args)
+        typedef           (do 
+                            (error-if-not (even? (count typeargs))
+                              "odd number of args")
+                            (apply hash-map typeargs))
+        sugar             (group-by type sugar)
+        mixins            (or (first (sugar clojure.lang.PersistentVector)) [])
+        docstring         (first (sugar java.lang.String))
+        base              (reduce merge base-type
+                            (conj mixins
+                              (if docstring
+                                {:docstring docstring}
+                                {})))]
+    (prn sugar mixins docstring base)
+    (error-if-not (every? #{java.lang.String clojure.lang.PersistentVector}
+                     (keys sugar))
+      "")
+    (error-if-not (every? #(= 1 (count %)) (vals sugar))
+      (str "bad sugar nums: " (vals sugar)))
+    
+    (merge base typedef)))
+integer
+date
+user=> (.valueOf (Boolean. "true"))
+(.valueOf (Boolean. "true"))
+(type false)
+(Long. 43)
+(Integer. 4345654654651515614654651654)
+(Integer. 434565465465)
+(defn merge-typedefs [a b]
+  (loop [acc a [[k v :as e] & more] (seq b)]
+    (if e
+      (case k
+        :add-validator (recur more (update-in acc [:validators] conj v))
+        ; default
+        (recur more (conj acc e)))
+      acc)))
+(fn? {})
+(ns cheese)
+(def shit "wank")
+(ns blah (:use cheese))
+(ns mike (:use blah))
+shit
+(ns blah (:use cheese))
+shit
+(ns blah (:use cheese))
+is
+(defmacro conds [v & things]
+  (let [last-resort (last things)
+        clauses (partition-all 2 (butlast things))]
+    `(let [v# ~v]
+      (cond
+      ~@(apply concat
+          (for [[pred branch] clauses]
+            [`(~pred v#) branch]))
+      :else ~last-resort))))
+(macroexpand 
+  '(conds 7
+    pos? (make love)
+    neg? (death from above)
+    cheese? (in your face)
+    (throw exception)))
+(clojure.pprint/pprint
+  (macroexpand 
+  '(conds 7
+    pos? (make love)
+    neg? (death from above)
+    cheese? (in your face)
+    (throw exception))))
+(defmacro process-mixins [ms]
+  (for [m ms]
+    (if (fn? m)
+      {:add-validator m}
+      m)))
+(Boolean. "false")
+(Boolean. false)
+(Float. 434565465465)
+(Float. "0.516514651651654468498181988465416513215351561465165651")
+(java.net.URL. "google.com")
+(java.net.URL. "http://google.com")
+(defn- traverse [sym & body]
+  `(sym things))
+(defmacro blah [& body]
+  `(let [shit# whatever]
+    (traverse shit#)))
+(macroexpand '(blah teets))
+(defmacro log [s]
+  `(println ~(name s) ": " ~s))
+(def pooh "hey poohface")
+(log pooh)
+(defmacro log [s]
+  `(println  (str ~(name s) ": " ~s)))
+(log pooh)
+(defmacro log [s]
+  `(println  (str ~(name s) ": " (pr-str ~s))))
+(log pooh)
+(defn- rewrite-opt-args [& args]
+  (let [[k & more] args
+        [aliases more] (split-with symbol? more)
+        [[mixins] & more] (split-with vector? more)
+        [[docstring] & typeargs] (split-with string? more)
+        ]
+    (log k)
+    (log aliases)
+    (log mixins)
+    (log docstring)
+    (log typeargs)))
+(rewrite-opt-args :outpath -o --output-path
+    [thing etc]
+    :validate-with :overwrite
+    :validate-with-fn (fn [f overwrite?] (if (.exists (as-file f)))))
+(defmacro opt [& args]
+  (apply rewrite-opt-args args))
+(opt :outpath -o --output-path
+    [thing etc]
+    :validate-with :overwrite
+    :validate-with-fn (fn [f overwrite?] (if (.exists (as-file f)))))
+(opt :outpath -o --output-path
+    [thing etc]
+    "the output path"
+    :validate-with :overwrite
+    :validate-with-fn (fn [f overwrite?] (if (.exists (as-file f)))))
+(opt :outpath -o --output-path
+    "the output path"
+    [thing etc]
+    :validate-with :overwrite
+    :validate-with-fn (fn [f overwrite?] (if (.exists (as-file f)))))
+(opt :outpath -o --output-path
+    [thing etc]
+    "the output path"
+    :validate-with :overwrite
+    :validate-with-fn (fn [f overwrite?] (if (.exists (as-file f)))))
+(defn- rewrite-opt-args [& args]
+  (let [[k & more] args
+        [aliases more] (split-with symbol? more)
+        [[mixins] & more] (split-with vector? more)
+        _ (log more)
+        [[docstring] & typeargs] (split-with string? more)
+        ]
+    (log k)
+    (log aliases)
+    (log mixins)
+    (log docstring)
+    (log typeargs)))
+(opt :outpath -o --output-path
+    [thing etc]
+    "the output path"
+    :validate-with :overwrite
+    :validate-with-fn (fn [f overwrite?] (if (.exists (as-file f)))))
+(defn- rewrite-opt-args [& args]
+  (let [[k & more] args
+        [aliases more] (split-with symbol? more)
+        [[mixins] more] (split-with vector? more)
+        [[docstring] typeargs] (split-with string? more)
+        ]
+    (log k)
+    (log aliases)
+    (log mixins)
+    (log docstring)
+    (log typeargs)))
+(opt :outpath -o --output-path
+    [thing etc]
+    "the output path"
+    :validate-with :overwrite
+    :validate-with-fn (fn [f overwrite?] (if (.exists (as-file f)))))
