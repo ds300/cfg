@@ -3,17 +3,21 @@
   (:require [clojure.core.match :refer [match]]))
 
 (defn get-mixins-and-docstring [[a b & more :as stuff]]
-  (let [ktype (comp {PersistentVector :vec String :str} type)]
-    (match [(ktype a) (ktype b)]
-      [:vec :str]
-        [a b more]
-      [:str :vec]
-        [b a more]
-      [:vec nil]
-        [a nil (cons b more)]
-      [:str nil]
-        [[] a (cons b more)]
-      :else [nil nil stuff])))
+  (let [ktype (comp {PersistentVector :vec String :str} type)
+        [mixins docstring more] (match [(ktype a) (ktype b)]
+                                  [:vec :str]
+                                    [a b more]
+                                  [:str :vec]
+                                    [b a more]
+                                  [:vec nil]
+                                    [a nil (cons b more)]
+                                  [:str nil]
+                                    [[] a (cons b more)]
+                                  :else [nil nil stuff])]
+    [mixins docstring (or (seq (filter identity more)) ())]))
+
+(defmacro log-sym [s]
+  `(println (str ~(name s) ": " ~s)))
 
 (defn is [obj]
   (fn [x]

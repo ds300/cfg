@@ -47,14 +47,35 @@
   (let [[mixins docstring body] (get-mixins-and-docstring body)
         cfg-sym (gensym "cfg")]
     `(let [~cfg-sym (Config. {} {} (reduce merge-typedefs {} ~mixins) ~docstring)]
-      ~@(traverse cfg-sym body))))
+      ~@(traverse cfg-sym body)
+      ~cfg-sym)))
+
+;;goddamn floating whorehouse death is the navigator
+;; i mean... this won't work. the config needs to be in an atom, which is whack
+;; threading ain't no good. maybe atom is it, despite the whack.
+
+(defmacro defconfig [nm & body]
+  `(def ~nm (config ~@body)))
 
 (defmacro prgood [body]
-  `(clojure.pprint/pprint (macroexpand (quote ~body))))
+  `(clojure.pprint/pprint (clojure.walk/macroexpand-all (quote ~body))))
 
-(prgood (config "teets" [int32] (opt :something --coffee [int32 pos?] "yes")))
+(prgood
+  (defconfig options
+    "some useful options"
 
-()
+    (opt :tree-height -th --tree-height
+      "The height of the tree"
+      [float32 pos?])
+    
+    (opts :general-things
+      "Some general things"
+      (defparamtype keyw
+        :parse keyword)
+      (opt :species -s --species
+        [keyw #{}]))))
+
+
 (defconfig myconfig
   (opt :overwrite -r --overwrite [flag]
     "Choose whether or not to overwrite the specified output file"

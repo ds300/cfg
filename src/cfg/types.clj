@@ -34,7 +34,7 @@
 (defn process-mixins [ms]
   (vec
     (for [m ms]
-      (if (fn? m)
+      (if ((por fn? set?) m)
         {:add-validator m}
         m))))
 
