@@ -7,16 +7,21 @@
   (add-opt [me k optdef])
   (nest [me k config]))
 
-(deftype Config [options aliases basetype docstring]
+(defrecord Config [options aliases basetype docstring]
   PConfig
   (add-opt [me k optdef]
-    )
+    (fail-when (options k) (str "Duplicate key " k))
+    (let [as (:aliases optdef)]
+      (fail-when-let [a (some aliases as)] (str "Duplicate cli alias " a))
+      (-> me
+        (assoc-in [:options k] optdef)
+        (assoc :aliases (into aliases (map #([% k]) as))))))
   (nest [me k config]))
 
 (defn- rewrite-opt
   "resolves the syntactic sugar of the opt command within the config macro.
   sym is the symbol bound to the Config which the opt is being defined for"
-  [sym args]
+  [args]
   (let [[k & more] args
         [aliases more] (split-with symbol? more)
         [mixins docstring typeargs] (get-mixins-and-docstring more)
@@ -25,34 +30,27 @@
                   [{:aliases (mapv name aliases)}
                   (if docstring {:docstring docstring} {})])]
 
-    `(add-opt ~sym ~k (reduce merge-typedefs ~typedef (process-mixins ~mixins)))))
+    `(add-opt ~k (reduce merge-typedefs ~typedef (process-mixins ~mixins)))))
 
 (defn- call? [sym form]
   (and
     (list? form)
     (= sym (first form))))
 
-(defn- traverse [sym body]
+(defn- traverse [body]
   (for [form body]
     (cond
       (call? 'opt form)
-        (rewrite-opt sym (rest form))
+        (rewrite-opt (rest form))
       (call? 'opts form)
-        `(nest ~sym ~(second form) (config ~@(drop 2 form)))
-      (list? form)
-        (traverse sym form)
-      :else form)))
+        `(nest ~(second form) (config ~@(drop 2 form)))
+      :else (throw (IllegalArgumentException.
+        "Config body can consist only of calls to `opt` and `opts`")))))
 
 (defmacro config [& body]
-  (let [[mixins docstring body] (get-mixins-and-docstring body)
-        cfg-sym (gensym "cfg")]
-    `(let [~cfg-sym (Config. {} {} (reduce merge-typedefs {} ~mixins) ~docstring)]
-      ~@(traverse cfg-sym body)
-      ~cfg-sym)))
-
-;;goddamn floating whorehouse death is the navigator
-;; i mean... this won't work. the config needs to be in an atom, which is whack
-;; threading ain't no good. maybe atom is it, despite the whack.
+  (let [[mixins docstring body] (get-mixins-and-docstring body)]
+    `(-> (Config. {} {} (reduce merge-typedefs {} ~mixins) ~docstring)
+      ~@(traverse body))))
 
 (defmacro defconfig [nm & body]
   `(def ~nm (config ~@body)))
@@ -70,10 +68,9 @@
     
     (opts :general-things
       "Some general things"
-      (defparamtype keyw
-        :parse keyword)
+      [int32]
       (opt :species -s --species
-        [keyw #{}]))))
+        [#{:monkey :father}]))))
 
 
 (defconfig myconfig
