@@ -9,14 +9,27 @@
 
 (defrecord Config [options aliases basetype docstring]
   PConfig
+
   (add-opt [me k optdef]
-    (fail-when (options k) (str "Duplicate key " k))
+    (fail-when (options k)
+      "Duplicate key " k)
     (let [as (:aliases optdef)]
-      (fail-when-let [a (some aliases as)] (str "Duplicate cli alias " a))
+      (fail-when-let [a (some aliases as)]
+        "Duplicate cli alias " a)
       (-> me
         (assoc-in [:options k] optdef)
-        (assoc :aliases (into aliases (map #([% k]) as))))))
-  (nest [me k config]))
+        (assoc :aliases (into aliases (map #(do [% [k]]) as))))))
+
+  (nest [me k config]
+    (fail-when (options k)
+      "Duplicate key " k)
+    (let [as (:aliases config)]
+      (fail-when-let [a (some aliases as)]
+        "Duplicate cli alias " a)
+      (-> me
+        (assoc-in [:options k] config)
+        (assoc :aliases (into aliases (for [[a ks] as]
+                                        [a (into [k] ks)])))))))
 
 (defn- rewrite-opt
   "resolves the syntactic sugar of the opt command within the config macro.
@@ -90,3 +103,4 @@
     "the output path"
     :validate-with :overwrite
     :validate-with-fn (fn [f overwrite?] (if (.exists (as-file f)))))))
+
