@@ -1,11 +1,9 @@
 (ns cfg.core
   (:require [cfg.utils :refer :all]
+            [cfg.protocols :refer [PConfig Validator]]
             [cfg.types :refer [merge-typedefs process-mixins]]
             [cfg.types.cli :refer :all]))
 
-(defprotocol PConfig
-  (add-opt [me k optdef])
-  (nest [me k config]))
 
 (defrecord Config [options aliases basetype docstring]
   PConfig
@@ -43,7 +41,7 @@
                   [{:aliases (mapv name aliases)}
                   (if docstring {:docstring docstring} {})])]
 
-    `(add-opt ~k (reduce merge-typedefs ~typedef (process-mixins ~mixins)))))
+    `(add-opt ~k (vec (flatten (conj mixins typedef))))))
 
 (defn- call? [sym form]
   (and
