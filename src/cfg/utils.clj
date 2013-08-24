@@ -2,7 +2,7 @@
   (:import clojure.lang.PersistentVector)
   (:require [clojure.core.match :refer [match]]))
 
-(defn get-mixins-and-docstring [[a b & more :as stuff]]
+(defn get-mixins-and-docstring [[a & [b & more :as things] :as stuff]]
   (let [ktype (comp {PersistentVector :vec String :str} type)
         [mixins docstring more] (match [(ktype a) (ktype b)]
                                   [:vec :str]
@@ -10,14 +10,18 @@
                                   [:str :vec]
                                     [b a more]
                                   [:vec nil]
-                                    [a nil (cons b more)]
+                                    [a nil things]
                                   [:str nil]
-                                    [[] a (cons b more)]
+                                    [[] a things]
                                   :else [nil nil stuff])]
-    [mixins docstring (or (seq (filter identity more)) ())]))
+    [mixins docstring (or more ())]))
 
 (defmacro log-sym [s]
-  `(println (str ~(name s) ": " ~s)))
+  `(println (str ~(name s) ": " (pr-str ~s))))
+
+(defmacro log-syms [& ss]
+  ~@(for [s ss]
+    `(log-sym ~s)))
 
 (defn is [obj]
   (fn [x]
