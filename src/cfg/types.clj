@@ -1,9 +1,18 @@
 (ns cfg.types
   "Yo. This is the type system of cfg."
   (:require [cfg.utils :refer :all]
-            [cfg.protocols :refer [PConfig Validator]]))
+            [cfg.protocols :refer :all]))
 
 (def ^:dynamic *base-type* {})
+
+(extend-type clojure.lang.IPersistentMap
+  Type
+  (parse-cli-args [me [head & tail :as args]]
+    (let [n (:take me 1)
+          from-string (:from-string me identity)
+          seq-from-string (:seq-from-string me)]
+      (if seq-from-string
+        ))))
 
 (def recognised-keys
   #{
@@ -15,21 +24,18 @@
     :seq-from-string
     :seq-parse
     :add-parser
-    :seq
+    :seq?
     :parsers
     :add-validator
     :docstring
     :description
     :default
     :merge
-    :required
-    :aliases
+    :required?
     :config-type
+    :gen-default-fn
+    :gen-default-with
     })
-
-
-
-(def cheese (fn [a] a))
 
 (defn merge-typemaps [a b]
   (loop [acc a [[k v :as e] & more] (seq b)]
@@ -46,7 +52,7 @@
       acc)))
 
 (defn resolve-typemap [typevec]
-  (reduce merge-typemaps *base-type* typevec))
+  (->Type (reduce merge-typemaps *base-type* typevec)))
 
 (defn process-mixins [ms]
   (vec

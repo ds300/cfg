@@ -1,54 +1,85 @@
 (ns cfg.core
   (:require [cfg.utils :refer :all]
-            [cfg.protocols :refer [PConfig Validator]]
-            [cfg.types :refer [merge-typedefs process-mixins]]
-            [cfg.types.cli :refer :all]))
+            [cfg.protocols :refer :all]
+            [cfg.types :refer :all]))
+
 
 
 (defrecord Config [options aliases basetype docstring]
+  GetWithin
+
+  (get-within [me ks]
+    (get-within options ks)))
+
   PConfig
 
-  (add-opt [me k optdef]
+  (add-opt [me k as typevec]
     (fail-when (options k)
       "Duplicate key " k)
-    (let [as (:aliases optdef)]
-      (fail-when-let [a (some aliases as)]
-        "Duplicate cli alias " a)
-      (-> me
-        (assoc-in [:options k] optdef)
-        (assoc :aliases (into aliases (map #(do [% [k]]) as))))))
+    (fail-when-let [a (some (keyset aliases) as)]
+          "Duplicate cli alias " a)
+    (binding [*base-type* basetype]
+      (let [typemap (resolve-typemap typevec)]
+        (-> me
+          (assoc-in [:options k] typemap)
+          (assoc :aliases (into aliases (map #(do [% [k]]) as)))))))
 
   (nest [me k config]
     (fail-when (options k)
       "Duplicate key " k)
     (let [as (:aliases config)]
-      (fail-when-let [a (some aliases as)]
+      (fail-when-let [a (some (keyset aliases) as)]
         "Duplicate cli alias " a)
       (-> me
         (assoc-in [:options k] config)
         (assoc :aliases (into aliases (for [[a ks] as]
-                                        [a (into [k] ks)])))))))
+                                        [a (into [k] ks)]))))))
+
+  (merge-configs [me other]
+    (Config.
+      (apply merge (map :options [me other]))
+      (apply merge (map :aliases [me other]))
+      (:basetype other)
+      (:docstring other)))
+
+
+  (parse-cli-args [me args]
+    (loop [[a & [b & more :as things]] args
+           errors []
+           acc {}
+           unused []]
+      (if a
+        (if-let [ks (aliases a)]
+          (let [typemap (get-within me ks)
+                n       (or (:take typemap) 1)
+                parser  (or (:from-string typemap) identity)])
+          (recur things errors acc (conj unused a)))
+        acc)))
+
 
 (defn- rewrite-opt
-  "resolves the syntactic sugar of the opt command within the config macro.
-  sym is the symbol bound to the Config which the opt is being defined for"
+  "dissolves the syntactic sugar of the opt command within the config macro."
   [args]
   (let [[k & more] args
         [aliases more] (split-with symbol? more)
         [mixins docstring typeargs] (get-mixins-and-docstring more)
 
-        typedef (reduce merge (apply hash-map typeargs)
-                  [{:aliases (mapv name aliases)}
-                  (if docstring {:docstring docstring} {})])]
+        typedef (merge (apply hash-map typeargs)
+                  (if docstring {:docstring docstring} {}))
 
-    `(add-opt ~k (vec (flatten (conj mixins typedef))))))
+        typevec (vec (flatten (conj mixins typedef)))
+        aliases (mapv name aliases)]
+
+    `(add-opt ~k ~aliases ~typevec)))
 
 (defn- call? [sym form]
   (and
     (list? form)
     (= sym (first form))))
 
-(defn- traverse [body]
+(defn- traverse
+  "re-writes forms in the config macro"
+  [body]
   (for [form body]
     (cond
       (call? 'opt form)

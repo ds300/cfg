@@ -16,6 +16,10 @@
                                   :else [nil nil stuff])]
     [mixins docstring (or more ())]))
 
+
+(defn keyset [m]
+  (into #{} (keys m)))
+
 (defmacro log-sym [s]
   `(println (str ~(name s) ": " (pr-str ~s))))
 
