@@ -1,32 +1,27 @@
 (ns cfg.types
   "Yo. This is the type system of cfg."
   (:require [cfg.utils :refer :all]
-            [cfg.protocols :refer :all]))
+            [cfg.protocols :refer :all]
+            [clojure.edn :as edn]
+            [clojure.core.match :refer [match]]))
 
 (def ^:dynamic *base-type* {})
-
-(extend-type clojure.lang.IPersistentMap
-  Type
-  (parse-cli-args [me [head & tail :as args]]
-    (let [n (:take me 1)
-          from-string (:from-string me identity)
-          seq-from-string (:seq-from-string me)]
-      (if seq-from-string
-        ))))
 
 (def recognised-keys
   #{
     :validators
-    :take
     :validate-with
     :validate-with-fn
+    :add-validator
+    :parsers
+    :add-parser
+    :parse-with
+    :parse-with-fn
+    :take
     :seq-validate
     :seq-from-string
     :seq-parse
-    :add-parser
     :seq?
-    :parsers
-    :add-validator
     :docstring
     :description
     :default
@@ -51,8 +46,59 @@
         (recur (conj acc e) more))
       acc)))
 
+(defn get-multi-args [args]
+  (fn [args]
+    (split-with (complement #(.startsWith % "-")) args)))
+
+(defn with-one [f]
+  (fn [[a & args]]
+    (fail-when-not a "no value given")
+    [(f a) args]))
+
+(defn with-some [parse-fn]
+  (fn [args]
+    (let [[taken remaining] (get-multi-args args)]
+      [(parse-fn taken) remaining])))
+
+(defn with-n [n parse-fn]
+  (fn [args]
+    (let [[taken remaining] (split-at n args)]
+      [(parse-fn taken) remaining])))
+
+(defn make-args-parser
+  "This function is an horrific beast. I am so sorry future me."
+  [{n :take s-parse :seq-from-string parse :from-string :as typemap}]
+  (let [f (case (or n 1)
+            0
+              (let [default   (:default typemap)
+                    val-expr  (match [parse default]
+                                [nil nil] nil
+                                [nil _]   default
+                                [_ _]     `(~parse))]
+                (eval `(fn [args#] [~val-expr args#])))
+
+            1
+              (let [parser  (match [s-parse parse]
+                              [nil nil] identity
+                              [nil _]   parse
+                              [_ nil]   s-parse
+                              [_ _]     #(mapv parse (s-parse %)))]
+                (with-one parser))
+            ; otherwise
+            (let [with-fn (if (neg? n) with-some (partial with-n n))
+                  parser  (match [s-parse parse]
+                            [nil nil] identity
+                            [nil _]   (partial mapv parse)
+                            [_ nil]   (partial mapv s-parse)
+                            [_ _]     #(mapv (partial mapv parse) (map s-parse %)))]
+              (with-fn parser)))]
+    (-> typemap
+      (assoc :from-args-fn f)
+      (dissoc :from-string :seq-from-string :take))))
+
 (defn resolve-typemap [typevec]
-  (->Type (reduce merge-typemaps *base-type* typevec)))
+  (-> (reduce merge-typemaps *base-type* typevec)
+    make-from-args-fn))
 
 (defn process-mixins [ms]
   (vec
@@ -66,7 +112,7 @@
           {:add-validator m}
         :else (fail! "invalid mixin: " m))))))
 
-(defn make-typevec
+(defn paramtype
   "makes a type vector"
   [& args]
   (let [[mixins description typeargs]  (get-mixins-and-docstring args)
@@ -83,18 +129,21 @@
     (vec (flatten (conj (process-mixins mixins) typedef)))))
 
 (defmacro defparamtype [nm & args]
-  `(def ~nm (make-typevec ~@args)))
+  `(def ~nm (paramtype ~@args)))
 
+(defn in-range? [a b]
+  (fn [x]
+    (and (>= x a) (<= x b))))
+
+(defn one-of [& ks]
+  (paramtype [(into #{} ks)]
+    :description (str "one of the following: " (apply str (interpose ", " ks)))))
 
 (defparamtype bool
   "Boolean flag"
-  :default false
   :take 0
-  :merge (fn [a b] (not a))
-  :from-string #(Boolean. %)
+  :from-string (fn [] true)
   :validate (fn [b] (instance? Boolean b)))
-
-
 
 (defparamtype integral
   "Integer"
@@ -139,10 +188,13 @@
   "URL"
   :from-string #(java.net.URL. %))
 
-(defparamtype keyw
+(defparamtype keyw [keyword?]
   "clojure keyword"
-  :add-validator keyword?
   :from-string keyword)
+
+(defparamtype string
+  "String"
+  :add-validator string?)
 
 (defparamtype csv [sequential]
   "comma-separated values"

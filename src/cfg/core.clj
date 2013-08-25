@@ -51,11 +51,11 @@
       (if a
         (if-let [ks (aliases a)]
           (let [typemap (get-within me ks)
+                default (:default typemap)
                 n       (or (:take typemap) 1)
                 parser  (or (:from-string typemap) identity)])
           (recur things errors acc (conj unused a)))
         acc)))
-
 
 (defn- rewrite-opt
   "dissolves the syntactic sugar of the opt command within the config macro."

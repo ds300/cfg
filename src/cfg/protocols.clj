@@ -26,8 +26,3 @@
         (if (satisfies? GetWithin v)
           (get-within v ks)
           (when (empty? ks) v))))))
-
-(defprotocol TypeDefinition
-  (parse-cli-args [me cli-args])
-  (validate [me value])
-  (parse [me value]))
