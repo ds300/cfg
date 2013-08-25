@@ -1,7 +1,8 @@
 (ns cfg.core
   (:require [cfg.utils :refer :all]
             [cfg.protocols :refer :all]
-            [cfg.types :refer :all]))
+            [cfg.types :refer :all]
+            :reload-all))
 
 
 

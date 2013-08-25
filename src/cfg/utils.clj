@@ -16,7 +16,6 @@
                                   :else [nil nil stuff])]
     [mixins docstring (or more ())]))
 
-
 (defn keyset [m]
   (into #{} (keys m)))
 
@@ -101,3 +100,26 @@
         (cons head (lazy-seq (take-while-unthrown pred tail)))
         nil)
       (catch Exception e nil))))
+
+
+(defmacro __>
+  ([x] x)
+  ([x form] (if (seq? form)
+              (with-meta (let [res (clojure.walk/postwalk-replace {'__ x} form)]
+                            (if (= res form)
+                              `(~(first form) ~x ~@(next form))
+                              res))
+                         (meta form))
+              (list form x)))
+  ([x form & more] `(__> (__> ~x ~form) ~@more)))
+
+(defmacro __>>
+  ([x] x)
+  ([x form] (if (seq? form)
+              (with-meta (let [res (clojure.walk/postwalk-replace {'__ x} form)]
+                            (if (= res form)
+                              `(~@form ~x)
+                              res))
+                         (meta form))
+              (list form x)))
+  ([x form & more] `(__>> (__>> ~x ~form) ~@more)))
