@@ -7,6 +7,7 @@
 
 (def ^:dynamic *base-type* {})
 
+
 (def recognised-keys
   #{
     :validators
@@ -16,8 +17,9 @@
     :parse-with
     :parse-with-fn
     :take
+    :cli-parse
     :seq-validate
-    :seq-from-string
+    :cli-seq-parse
     :seq-parse
     :seq?
     :docstring
@@ -62,10 +64,10 @@
 
 (defn make-args-parser
   "This function is an horrific beast. I am so sorry future me."
-  [{n :take s-parse :seq-from-string parse :from-string :as typemap}]
+  [{n :take s-parse :cli-seq-parse parse :cli-parse :as typemap}]
   (case (or n 1)
     0
-      (let [default   (:default typemap)
+      (let [get-default   (:get-default typemap)
             val-expr  (match [parse default]
                         [nil nil] nil
                         [nil _]   default
@@ -88,9 +90,52 @@
                     [_ _]     #(mapv (partial mapv parse) (map s-parse %)))]
       (with-fn parser))))
 
+(defn required-val [parser])
+
+(defn make-default-getter
+  [{required :required default :default gen-default :gen-default-fn}]
+  (cond
+    required    (fn [] (-> "No value supplied."
+                          IllegalArgumentException.
+                          throw))
+    gen-default gen-default
+    :else       (constantly default)))
+
+(defn make-value-parser
+  [{parsers :parsers parse-with-fn :parse-with-fn s-parse :seq-parse}]
+  (let [parse  (case (count parsers)
+                 0 identity
+                 1 (first parsers)
+                 (apply comp parsers))
+        parse (if s-parse
+                (fn [value]
+                  (mapv parse (s-parse value)))
+                parse)]
+    (if parse-with-fn
+      (fn [value & withs]
+        (apply parse-with-fn (parse value) withs))
+      parse)))
+
+(defn make-validator
+  [{validators :validators validate-with-fn :validate-with-fn s-val :seq-validate}]
+  (let [validate  (case (count validators)
+                 0 identity
+                 1 (first parsers)
+                 (apply comp parsers))
+        parse (if s-parse
+                (fn [value]
+                  (mapv parse (s-parse value)))
+                parse)]
+    (if parse-with-fn
+      (fn [value & withs]
+        (apply parse-with-fn (parse value) withs))
+      parse)))
+
 (defn resolve-typemap [typevec]
   (__> (reduce merge-typemaps *base-type* typevec)
-    (assoc __ :parse-args (make-args-parser __))))
+    (assoc __ :get-default (make-default-getter __))
+    (assoc __ :parse-args (make-args-parser __))
+    (assoc __ :parse (make-value-parser __))))
 
 (defn process-mixins [ms]
   (vec
