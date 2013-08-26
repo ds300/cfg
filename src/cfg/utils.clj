@@ -101,6 +101,9 @@
         nil)
       (catch Exception e nil))))
 
+(defn is-cli-opt-flag? [s]
+  (.startsWith s "-"))
+
 
 (defmacro __>
   ([x] x)

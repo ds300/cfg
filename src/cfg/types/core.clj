@@ -47,32 +47,13 @@
         (recur (conj acc e) more))
       acc)))
 
-(defn with-one [f]
-  (fn [[a & args]]
-    (fail-when-not a "no value given")
-    [(f a) args]))
-
-(defn with-some [parse-fn]
-  (fn [args]
-    (let [[taken remaining] (split-with (complement #(.startsWith % "-")) args)]
-      [(parse-fn taken) remaining])))
-
-(defn with-n [n parse-fn]
-  (fn [args]
-    (let [[taken remaining] (split-at n args)]
-      [(parse-fn taken) remaining])))
 
 (defn make-args-parser
   "This function is an horrific beast. I am so sorry future me."
   [{n :take s-parse :cli-seq-parse parse :cli-parse :as typemap}]
-  (case (or n 1)
+  (case (or (and (integer? n) n) 1)
     0
-      (let [get-default   (:get-default typemap)
-            val-expr  (match [parse default]
-                        [nil nil] nil
-                        [nil _]   default
-                        [_ _]     `(~parse))]
-        (eval `(fn [args#] [~val-expr args#])))
+      (complement (:get-default typemap))
 
     1
       (let [parser  (match [s-parse parse]
@@ -80,24 +61,25 @@
                       [nil _]   parse
                       [_ nil]   s-parse
                       [_ _]     #(mapv parse (s-parse %)))]
-        (with-one parser))
-    ; otherwise
-    (let [with-fn (if (neg? n) with-some (partial with-n n))
-          parser  (match [s-parse parse]
-                    [nil nil] identity
-                    [nil _]   (partial mapv parse)
-                    [_ nil]   (partial mapv s-parse)
-                    [_ _]     #(mapv (partial mapv parse) (map s-parse %)))]
-      (with-fn parser))))
+        (fn [[a & args]]
+          (fail-when-not a "no value given")
+          [(parser a) args]))
+    ; otherwise we are dealing with multi args
+    (let [split-args (if (neg? n)
+                      #(split-with (complement is-cli-opt-flag?) %)
+                      #(split-at n %))
+          parser     (or parse identity)]
+      (fn [args]
+        (let [[taken remaining] (split-args args)]
+          [(parser taken) remaining])))))
+
 
 (defn required-val [parser])
 
 (defn make-default-getter
   [{required :required default :default gen-default :gen-default-fn}]
   (cond
-    required    (fn [] (-> "No value supplied."
-                          IllegalArgumentException.
-                          throw))
+    required    #(fail! "No value supplied.")
     gen-default gen-default
     :else       (constantly default)))
 
