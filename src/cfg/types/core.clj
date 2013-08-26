@@ -1,7 +1,7 @@
 (ns cfg.types.core
   "This is the type system."
-  (:require [cfg.utils :refer :all]
-            [cfg.protocols :refer :all]
+  (:require [cfg.utils :as utils]
+            [cfg.protocols :as proto]
             [clojure.core.match :refer [match]]  :reload-all))
 
 
@@ -50,7 +50,7 @@
   [{n :take s-parse :cli-seq-parse parse :cli-parse :as typemap}]
   (case (or (and (integer? n) n) 1)
     0
-      (complement (:get-default typemap))
+      (fn [args] [(complement (:get-default typemap)) args])
 
     1
       (let [parser  (match [s-parse parse]
@@ -59,11 +59,11 @@
                       [_ nil]   s-parse
                       [_ _]     #(mapv parse (s-parse %)))]
         (fn [[a & args]]
-          (fail-when-not a "no value given")
+          (utils/fail-when-not a "no value given")
           [(parser a) args]))
     ; otherwise we are dealing with multi args
     (let [split-args (if (neg? n)
-                      #(split-with (complement is-cli-opt-flag?) %)
+                      #(split-with (complement utils/is-cli-opt-flag?) %)
                       #(split-at n %))
           parser     (or parse identity)]
       (fn [args]
@@ -74,27 +74,31 @@
 (defn make-default-getter
   [{required :required default :default gen-default :gen-default-fn}]
   (cond
-    required    #(fail! "No value supplied.")
+    required    #(utils/fail! "No value supplied.")
     gen-default gen-default
     :else       (constantly default)))
 
 (defn make-value-parser
-  [{parsers :parsers s-parse :seq-parse}]
-  (let [parse (case (count parsers)
-                0 identity
-                1 (first parsers)
-                (apply comp (reverse parsers)))]
-    (if s-parse
+  [{parsers :parsers s-parse :seq-parse sequence? :seq? config-type :config-type}]
+  (let [parse (if config-type
+                (partial proto/parse-only config-type)
+                (case (count parsers)
+                  0 identity
+                  1 (first parsers)
+                  (apply comp (reverse parsers))))]
+    (if (or s-parse sequence?)
       (fn [value]
-        (mapv parse (s-parse value)))
+        (mapv parse ((or s-parse identity) value)))
       parse)))
 
 (defn make-validator
-  [{validators :validators ex-validate :external-validate sequence? :seq?}]
-  (let [validate  (case (count validators)
-                    0 (constantly true)
-                    1 (first validators)
-                    (apply pand validators))
+  [{validators :validators ex-validate :external-validate sequence? :seq? config-type :config-type}]
+  (let [validate  (if config-type
+                    (partial proto/validate config-type) ; need to namespace qualify protocols
+                    (case (count validators)
+                      0 (constantly true)
+                      1 (first validators)
+                      (apply utils/pand validators)))
         validate  (if sequence?
                     #(every? validate %)
                     validate)]
@@ -105,7 +109,7 @@
       validate)))
 
 (defn resolve-typemap [typevec]
-  (__> (reduce merge-typemaps *base-type* typevec)
+  (utils/__> (reduce merge-typemaps *base-type* typevec)
     (assoc __ :get-default (make-default-getter __))
     (assoc __ :cli-parse   (make-args-parser __))
     (assoc __ :parse       (make-value-parser __))
@@ -117,18 +121,18 @@
       (cond
         (map? m)
           m
-        (satisfies? PConfig m)
+        (satisfies? proto/PConfig m)
           {:config-type m}
         (instance? clojure.lang.IFn m)
           {:add-validator m}
-        :else (fail! "invalid mixin: " m)))))
+        :else (utils/fail! "invalid mixin: " m)))))
 
 (defn paramtype
   "makes a type vector"
   [& args]
-  (let [[mixins description typeargs]  (get-mixins-and-docstring args)
+  (let [[mixins description typeargs]  (utils/get-mixins-and-docstring args)
 
-        _                 (fail-when-not (even? (count typeargs))
+        _                 (utils/fail-when-not (even? (count typeargs))
                               "odd number of args")
 
         description       (if description

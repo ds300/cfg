@@ -10,7 +10,7 @@
   GetWithin
 
   (get-within [me ks]
-    (get-within options ks)))
+    (get-within options ks))
 
   PConfig
 
@@ -24,6 +24,14 @@
         (-> me
           (assoc-in [:options k] typemap)
           (assoc :aliases (into aliases (map #(do [% [k]]) as)))))))
+
+  (get-defaults [me]
+    (into {}
+      (filter identity
+        (for [[k v] options]
+        (if (satisfies? PConfig v)
+          [k (get-defaults v)]
+          (try [k ((:get-default k))] (catch Exception e nil)))))))
 
   (nest [me k config]
     (fail-when (options k)
@@ -50,13 +58,29 @@
            acc {}
            unused []]
       (if a
-        (if-let [ks (aliases a)]
-          (let [typemap (get-within me ks)
-                default (:default typemap)
-                n       (or (:take typemap) 1)
-                parser  (or (:from-string typemap) identity)])
+        (if (is-cli-opt-flag? a)
+          (if-let [ks (aliases a)]
+            (let [typemap (get-within me ks)
+                  parse   (:cli-parse typemap)]
+              (try
+                (let [[value remaining] (parse things)]
+                  (recur remaining errors (assoc-in acc ks value)))
+                (catch Exception e
+                  (recur [] (conj errors (str e)) nil nil))))
+            (recur things (conj errors (str a " is not an option"))))
           (recur things errors acc (conj unused a)))
-        acc)))
+        [(and acc (parse-and-validate me acc)) errors unused])))
+
+
+  (parse-and-validate [me data]
+    (when data
+      ))
+
+  (validate [me data])
+
+  (parse-only [me data]
+    ))
+
 
 (defn- rewrite-opt
   "dissolves the syntactic sugar of the opt command within the config macro."

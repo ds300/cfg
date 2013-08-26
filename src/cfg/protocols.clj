@@ -4,11 +4,11 @@
   (add-opt [me k optdef])
   (nest [me k config])
   (parse-cli-args [me args])
+  (parse [me data])
+  (parse-only [me data])
+  (validate [me data])
   (merge-configs [me other])
   (get-typemap [me ks]))
-
-(defprotocol Validator
-  (validate [me & args]))
 
 (extend-type clojure.lang.IFn
   Validator
