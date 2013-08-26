@@ -12,10 +12,8 @@
   #{
     :validators
     :validate-with
-    :validate-with-fn
+    :external-validate
     :parsers
-    :parse-with
-    :parse-with-fn
     :take
     :cli-parse
     :seq-validate
@@ -49,7 +47,7 @@
 
 
 (defn make-args-parser
-  "This function is an horrific beast. I am so sorry future me."
+  "This function is kind of ok-ish now. Good job dave."
   [{n :take s-parse :cli-seq-parse parse :cli-parse :as typemap}]
   (case (or (and (integer? n) n) 1)
     0
@@ -74,8 +72,6 @@
           [(parser taken) remaining])))))
 
 
-(defn required-val [parser])
-
 (defn make-default-getter
   [{required :required default :default gen-default :gen-default-fn}]
   (cond
@@ -84,40 +80,37 @@
     :else       (constantly default)))
 
 (defn make-value-parser
-  [{parsers :parsers parse-with-fn :parse-with-fn s-parse :seq-parse}]
-  (let [parse  (case (count parsers)
-                 0 identity
-                 1 (first parsers)
-                 (apply comp parsers))
-        parse (if s-parse
-                (fn [value]
-                  (mapv parse (s-parse value)))
-                parse)]
-    (if parse-with-fn
-      (fn [value & withs]
-        (apply parse-with-fn (parse value) withs))
+  [{parsers :parsers s-parse :seq-parse}]
+  (let [parse (case (count parsers)
+                0 identity
+                1 (first parsers)
+                (apply comp parsers))]
+    (if s-parse
+      (fn [value]
+        (mapv parse (s-parse value)))
       parse)))
 
 (defn make-validator
-  [{validators :validators validate-with-fn :validate-with-fn s-val :seq-validate}]
+  [{validators :validators ex-validate :external-validate sequence? :seq?}]
   (let [validate  (case (count validators)
-                 0 identity
-                 1 (first parsers)
-                 (apply comp parsers))
-        parse (if s-parse
-                (fn [value]
-                  (mapv parse (s-parse value)))
-                parse)]
-    (if parse-with-fn
-      (fn [value & withs]
-        (apply parse-with-fn (parse value) withs))
-      parse)))
+                    0 (constantly true)
+                    1 (first validators)
+                    (apply pand validators))
+        validate  (if sequence?
+                    #(every? validate %)
+                    validate)]
+    (if ex-validate
+      (fn [value & args]
+        (and (validate value)
+          (apply ex-validate value args)))
+      validate)))
 
 (defn resolve-typemap [typevec]
   (__> (reduce merge-typemaps *base-type* typevec)
     (assoc __ :get-default (make-default-getter __))
-    (assoc __ :parse-args (make-args-parser __))
-    (assoc __ :parse (make-value-parser __))))
+    (assoc __ :parse-args  (make-args-parser __))
+    (assoc __ :parse       (make-value-parser __))
+    (assoc __ :validator   (make-validator __))))
 
 (defn process-mixins [ms]
   (vec
