@@ -7,7 +7,6 @@
 
 (def ^:dynamic *base-type* {})
 
-
 (def recognised-keys
   #{
     :validators
@@ -39,7 +38,7 @@
         :validate
           (recur (assoc acc :validators [v]) more)
         :add-parser
-          (recur (update-in acc [:validators] (fnil conj []) v) more)
+          (recur (update-in acc [:parsers] (fnil conj []) v) more)
         :parse
           (recur (assoc acc :parsers [v]) more)
         (recur (conj acc e) more))
@@ -69,7 +68,7 @@
           parser     (or parse identity)]
       (fn [args]
         (let [[taken remaining] (split-args args)]
-          [(parser taken) remaining])))))
+          [(mapv parser taken) remaining])))))
 
 
 (defn make-default-getter
@@ -84,7 +83,7 @@
   (let [parse (case (count parsers)
                 0 identity
                 1 (first parsers)
-                (apply comp parsers))]
+                (apply comp (reverse parsers)))]
     (if s-parse
       (fn [value]
         (mapv parse (s-parse value)))
@@ -108,9 +107,9 @@
 (defn resolve-typemap [typevec]
   (__> (reduce merge-typemaps *base-type* typevec)
     (assoc __ :get-default (make-default-getter __))
-    (assoc __ :parse-args  (make-args-parser __))
+    (assoc __ :cli-parse   (make-args-parser __))
     (assoc __ :parse       (make-value-parser __))
-    (assoc __ :validator   (make-validator __))))
+    (assoc __ :validate    (make-validator __))))
 
 (defn process-mixins [ms]
   (vec

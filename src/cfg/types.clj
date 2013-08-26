@@ -13,18 +13,18 @@
 
 (defn one-of [& ks]
   (paramtype [(into #{} ks)]
-    :description (str "one of the following: " (apply str (interpose ", " ks)))))
+    :description (str "one of the following: "
+                   (apply str (interpose ", " ks)))))
 
 (defparamtype bool
   "Boolean flag"
   :take 0
-  :from-string (fn [] true)
   :validate (fn [b] (instance? Boolean b)))
 
 (defparamtype integral
   "Integer"
   [integer?]
-  :from-string edn/read-string)
+  :cli-parse edn/read-string)
 
 (defparamtype int64 [integral]
   :parse long)
@@ -35,7 +35,7 @@
 (defparamtype decimal
   "Decimal value"
   [decimal?]
-  :from-string edn/read-string)
+  :cli-parse edn/read-string)
 
 (defparamtype float64 [decimal]
   :parse double)
@@ -51,7 +51,7 @@
   :requried false)
 
 (defparamtype sequential
-  :seq true
+  :seq? true
   :seq-parse vec)
 
 (defparamtype multi [sequential]
@@ -71,7 +71,8 @@
 
 (defparamtype keyw [keyword?]
   "clojure keyword"
-  :from-string keyword)
+  :parse keyword
+  :cli-parse keyword)
 
 (defparamtype string
   "String"
@@ -79,11 +80,4 @@
 
 (defparamtype csv [sequential]
   "comma-separated values"
-  :seq-from-string #(clojure.string/split % #","))
-
-(defparamtype csv-keywords
-  [csv keyw])
-
-; maybe from-strings should be reserved for getting things into the state that
-; you'd expect to find them represented in JSON or edn or something. Then the
-; parsers sort them out good and proper like.
+  :cli-seq-parse #(clojure.string/split % #","))
