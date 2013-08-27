@@ -81,7 +81,7 @@
 (defn make-value-parser
   [{parsers :parsers s-parse :seq-parse sequence? :seq? config-type :config-type}]
   (let [parse (if config-type
-                (partial proto/parse-only config-type)
+                (partial proto/parse config-type)
                 (case (count parsers)
                   0 identity
                   1 (first parsers)
@@ -106,14 +106,17 @@
       (fn [value & args]
         (and (validate value)
           (apply ex-validate value args)))
-      validate)))
+      (fn [value & args]
+        (validate value)))))
 
-(defn resolve-typemap [typevec]
-  (utils/__> (reduce merge-typemaps *base-type* typevec)
-    (assoc __ :get-default (make-default-getter __))
-    (assoc __ :cli-parse   (make-args-parser __))
-    (assoc __ :parse       (make-value-parser __))
-    (assoc __ :validate    (make-validator __))))
+(defn resolve-typemap 
+  ([base-type typevec]
+    (utils/__> (reduce merge-typemaps (flatten (concat base-type typevec)))
+      (assoc __ :get-default (make-default-getter __))
+      (assoc __ :cli-parse   (make-args-parser __))
+      (assoc __ :parse       (make-value-parser __))
+      (assoc __ :validate    (make-validator __))))
+  ([typevec] (resolve-typemap [] typevec)))
 
 (defn process-mixins [ms]
   (vec

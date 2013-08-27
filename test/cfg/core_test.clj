@@ -1,16 +1,18 @@
 (ns cfg.core-test
-  (:use midje.sweet cfg.core))
+  (:require [cfg.core :refer [defconfig prgood parse-cli-args]]
+            [cfg.types :refer :all]
+            [cfg.protocols :refer :all]
 
-(facts "about `dissoc-in`"
-  (fact "it removes elements from a nested map structure"
-    (dissoc-in {:a {:b {:d true} :c true}} [:a :c])
-    => {:a {:b {:d true}}})
-  (fact "it removes empty maps too."
-    (dissoc-in {:a {:b {:d true} :c true}} [:a :b :d])
-    => {:a {:c true}}))
+            :reload-all))
 
-(fact "`arg-to-location` takes a colon-delimited string, such as :blah:hello:sir, and returns a seq of keyfn applied to the args"
-  (arg-to-location ":hello:there:sir" keyword) => [:hello :there :sir]
-  (arg-to-location ":hello:there:sir:" identity) => ["hello" "there" "sir"]
-  (arg-to-location ":easy:bruv::::" keyword) => [:easy :bruv])
+; (prgood
 
+(defconfig michael
+  (opt :surname -s --surname)
+  (opt :nicknames -n --nicknames [multi])
+  (opt :age -a --age [integral even?]))
+
+; )
+(def teeth nil)
+
+(parse-cli-args michael ["nothing" "-s" "jackson" "more nothing" "-n" "king of pop" "michael fucking jackson" "-a" "45"])

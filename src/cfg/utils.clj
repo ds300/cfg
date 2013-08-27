@@ -23,8 +23,9 @@
   `(println (str ~(name s) ": " (pr-str ~s))))
 
 (defmacro log-syms [& ss]
-  ~@(for [s ss]
-    `(log-sym ~s)))
+  `(do
+    ~@(for [s ss]
+        `(log-sym ~s))))
 
 (defn is [obj]
   (fn [x]
@@ -126,3 +127,10 @@
                          (meta form))
               (list form x)))
   ([x form & more] `(__>> (__>> ~x ~form) ~@more)))
+
+(defn interleave-fn [f coll]
+  (vec (interleave coll (map f coll))))
+
+(defmacro map-let [m bindings & body]
+  `(let [{~@(interleave-fn keyword bindings) ~@()} ~m]
+    ~@body))

@@ -1,93 +1,122 @@
 (ns cfg.core
-  (:require [cfg.utils :refer :all]
-            [cfg.protocols :refer :all]
-            [cfg.types :refer :all]
+  (:require [cfg.utils :as utils]
+            [cfg.utils :refer [map-let fail-when fail-when-let]]
+            [cfg.protocols :as proto]
+            [cfg.types.core :refer [resolve-typemap process-mixins]]
             :reload-all))
 
+(defn all-keys [conf]
+  (loop [[[k v :as e] & more] (seq (:options conf))
+         acc []]
+    (if e
+      (if (satisfies? proto/PConfig v)
+        (recur more (into acc (map (partial into [k]) (all-keys v))))
+        (recur more (conj acc [k])))
+      acc)))
 
+(defn get-defaults [conf]
+  (into {}
+    (filter identity
+      (for [[k v] (:options conf)]
+      (if (satisfies? proto/PConfig v)
+        [k (get-defaults v)]
+        (try [k ((:get-default k))] (catch Exception e nil)))))))
+
+; (defn build-validation-queue [conf data]
+;   (map-let conf [options]
+;     ()))
 
 (defrecord Config [options aliases basetype docstring]
-  GetWithin
+  proto/GetWithin
 
-  (get-within [me ks]
-    (get-within options ks))
+  (get-within [{options :options} ks]
+    (proto/get-within options ks))
 
-  PConfig
+  proto/PConfig
 
-  (add-opt [me k as typevec]
+  (parse [conf data]
+    (loop [[[k v :as e] & more] (seq data)
+           acc {}]
+      (if e
+        (if-let [parser (:parse (options k))]
+          (recur more (assoc acc k (parser v)))
+          (recur more (assoc acc k (proto/parse (options k) v))))
+        acc)))
+
+  (validate [conf data]
+    (map-let conf [options]
+      (let [defaults (get-defaults conf)]))))
+
+(defn add-opt [conf k more-aliases typevec]
+  (map-let conf [aliases options basetype]
     (fail-when (options k)
       "Duplicate key " k)
-    (fail-when-let [a (some (keyset aliases) as)]
-          "Duplicate cli alias " a)
-    (binding [*base-type* basetype]
-      (let [typemap (resolve-typemap typevec)]
-        (-> me
-          (assoc-in [:options k] typemap)
-          (assoc :aliases (into aliases (map #(do [% [k]]) as)))))))
+    (fail-when-let [a (some (utils/keyset aliases) more-aliases)]
+      "Duplicate cli alias " a)
+    (let [typemap (resolve-typemap basetype (process-mixins typevec))]
+      (-> conf
+        (assoc-in [:options k] typemap)
+        (assoc :aliases (into aliases (map #(do [% [k]]) more-aliases)))))))
 
-  (get-defaults [me]
-    (into {}
-      (filter identity
-        (for [[k v] options]
-        (if (satisfies? PConfig v)
-          [k (get-defaults v)]
-          (try [k ((:get-default k))] (catch Exception e nil)))))))
 
-  (nest [me k config]
+
+(defn nest [conf k child-config]
+  (map-let conf [options aliases]
     (fail-when (options k)
       "Duplicate key " k)
-    (let [as (:aliases config)]
-      (fail-when-let [a (some (keyset aliases) as)]
+    (let [as (:aliases child-config)]
+      (fail-when-let [a (some (utils/keyset aliases) as)]
         "Duplicate cli alias " a)
-      (-> me
-        (assoc-in [:options k] config)
+      (-> conf
+        (assoc-in [:options k] child-config)
         (assoc :aliases (into aliases (for [[a ks] as]
-                                        [a (into [k] ks)]))))))
-
-  (merge-configs [me other]
-    (Config.
-      (apply merge (map :options [me other]))
-      (apply merge (map :aliases [me other]))
-      (:basetype other)
-      (:docstring other)))
+                                        [a (into [k] ks)])))))))
 
 
-  (parse-cli-args [me args]
+
+(defn all-keys [conf]
+  (loop [[[k v :as e] & more] (seq (:options conf))
+         acc []]
+    (if e
+      (if (satisfies? proto/PConfig v)
+        (recur more (into acc (map (partial into [k]) (all-keys v))))
+        (recur more (conj acc [k])))
+      acc)))
+
+(defn build-validation-queue [conf data]
+  (map-let conf [options]
+    ()))
+
+
+
+(defn parse-and-validate [conf data]
+  (let [data (proto/parse conf data)]
+    (proto/validate conf data)
+    data))
+
+(defn parse-cli-args [conf args]
+  (let [aliases (:aliases conf)]
     (loop [[a & [b & more :as things]] args
-           errors []
            acc {}
            unused []]
       (if a
-        (if (is-cli-opt-flag? a)
+        (if (utils/is-cli-opt-flag? a)
           (if-let [ks (aliases a)]
-            (let [typemap (get-within me ks)
+            (let [typemap (proto/get-within conf ks)
                   parse   (:cli-parse typemap)]
-              (try
-                (let [[value remaining] (parse things)]
-                  (recur remaining errors (assoc-in acc ks value)))
-                (catch Exception e
-                  (recur [] (conj errors (str e)) nil nil))))
-            (recur things (conj errors (str a " is not an option"))))
-          (recur things errors acc (conj unused a)))
-        [(and acc (parse-and-validate me acc)) errors unused])))
-
-
-  (parse-and-validate [me data]
-    (when data
-      ))
-
-  (validate [me data])
-
-  (parse-only [me data]
-    ))
-
+              (utils/log-syms typemap parse ks aliases)
+              (let [[value remaining] (parse things)]
+                (recur remaining (assoc-in acc ks value) unused)))
+            (utils/fail! a "is not an option"))
+          (recur things acc (conj unused a)))
+        [acc unused]))))
 
 (defn- rewrite-opt
   "dissolves the syntactic sugar of the opt command within the config macro."
   [args]
   (let [[k & more] args
         [aliases more] (split-with symbol? more)
-        [mixins docstring typeargs] (get-mixins-and-docstring more)
+        [mixins docstring typeargs] (utils/get-mixins-and-docstring more)
 
         typedef (merge (apply hash-map typeargs)
                   (if docstring {:docstring docstring} {}))
@@ -115,8 +144,9 @@
         "Config body can consist only of calls to `opt` and `opts`")))))
 
 (defmacro config [& body]
-  (let [[mixins docstring body] (get-mixins-and-docstring body)]
-    `(-> (Config. {} {} (reduce merge-typedefs {} ~mixins) ~docstring)
+  (let [[mixins docstring body] (utils/get-mixins-and-docstring body)]
+    (utils/log-syms mixins docstring body)
+    `(-> (Config. {} {} ~mixins ~docstring)
       ~@(traverse body))))
 
 (defmacro defconfig [nm & body]
@@ -125,36 +155,34 @@
 (defmacro prgood [body]
   `(clojure.pprint/pprint (clojure.walk/macroexpand-all (quote ~body))))
 
-(prgood
-  (defconfig options
-    "some useful options"
+; (prgood
+;   (defconfig options
+;     "some useful options"
 
-    (opt :tree-height -th --tree-height
-      "The height of the tree"
-      [float32 pos?])
+;     (opt :tree-height -th --tree-height
+;       "The height of the tree"
+;       [float32 pos?])
     
-    (opts :general-things
-      "Some general things"
-      [int32]
-      (opt :species -s --species
-        [#{:monkey :father}]))))
+;     (opts :general-things
+;       "Some general things"
+;       [int32]
+;       (opt :species -s --species
+;         [#{:monkey :father}]))))
+
+; (defconfig myconfig
+;   (opt :overwrite -r --overwrite [flag]
+;     "Choose whether or not to overwrite the specified output file")
+;   (opt :outpath -o --output-path
+;     [int32 pos?]
+;     "the output path"
+;     :validate-with :overwrite
+;     :validate-with-fn (fn [f overwrite?] (do nil))))
 
 
-(defconfig myconfig
-  (opt :overwrite -r --overwrite [flag]
-    "Choose whether or not to overwrite the specified output file"
-    )
-  (opt :outpath -o --output-path
-    [int32 pos?]
-    "the output path"
-    :validate-with :overwrite
-    :validate-with-fn (fn [f overwrite?] (do nil))))
-
-
-(clojure.pprint/pprint 
-  (macroexpand '(opt :outpath -o --output-path
-    [thing etc]
-    "the output path"
-    :validate-with :overwrite
-    :validate-with-fn (fn [f overwrite?] (if (.exists (as-file f)))))))
+; (clojure.pprint/pprint 
+;   (macroexpand '(opt :outpath -o --output-path
+;     [thing etc]
+;     "the output path"
+;     :validate-with :overwrite
+;     :validate-with-fn (fn [f overwrite?] (if (.exists (as-file f)))))))
 
