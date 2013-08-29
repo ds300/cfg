@@ -102,7 +102,7 @@
         (->SeqType (apply into (map :properties-list [me other]))
           nil nil nil nil)
       (instance? ValType other)
-        (->SeqType  (into (:properties-list me other)
+        (->SeqType  (into (:properties-list me)
                       (concat
                         (for [validator (:validators (:properties other))]
                           (->AbstractTypeProperty {:add-validator validator}))
