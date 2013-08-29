@@ -88,10 +88,10 @@
 (extend-type MapType
   AbstractType
   (compose [me other]
-    (cond
+    (if
       (instance? MapType other)
         (->MapType (apply map-merge (map :properties [me other])) nil nil nil)
-      :else (throw (Exception.
+      (throw (Exception.
                (str "Map types are only composable with other map types"))))))
 
 (extend-type SeqType
