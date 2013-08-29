@@ -22,6 +22,10 @@
 (defmacro log-sym [s]
   `(println (str ~(name s) ": " (pr-str ~s))))
 
+(defmacro log-action [s & body]
+  `(do (println ~s)
+    ~@body))
+
 (defmacro log-syms [& ss]
   `(do
     ~@(for [s ss]

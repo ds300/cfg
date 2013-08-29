@@ -2,8 +2,7 @@
   (:require [cfg.utils :as utils]
             [cfg.utils :refer [map-let fail-when fail-when-let]]
             [cfg.protocols :as proto]
-            [cfg.types.core :refer [resolve-typemap process-mixins]]
-            :reload-all))
+            [cfg.types.core :refer [resolve-typemap process-mixins]]))
 
 (defn all-keys [conf]
   (loop [[[k v :as e] & more] (seq (:options conf))
@@ -14,17 +13,36 @@
         (recur more (conj acc [k])))
       acc)))
 
+(defn get-validation-dependencies [conf]
+  (map (juxt identity #(get-in (:options conf) (conj % :validate-with)))
+    (all-keys conf)))
+
+(defn build-validation-queue [conf]
+  (let [safety (atom 0)]
+   (loop [[[ks ds] & others] (get-validation-dependencies conf)
+         queue []]
+    (swap! safety inc)
+    (if (< @safety 100000)
+      (if ks
+        (if ds
+          (if (every? (into #{} queue) ds)
+            (recur others (conj queue ks))
+            (recur (concat others [[ks ds]]) queue))
+          (recur others (conj queue ks)))
+        queue)
+      (throw (RuntimeException. (str "Cyclical dependency detected for key" ks)))))))
+
 (defn get-defaults [conf]
   (into {}
     (filter identity
-      (for [[k v] (:options conf)]
-      (if (satisfies? proto/PConfig v)
-        [k (get-defaults v)]
-        (try [k ((:get-default k))] (catch Exception e nil)))))))
+      (for [[k typedef] (:options conf)]
+        (if (satisfies? proto/PConfig typedef)
+          [k (get-defaults typedef)]
+          (try [k ((:get-default typedef))] (catch Exception e nil)))))))
 
-; (defn build-validation-queue [conf data]
-;   (map-let conf [options]
-;     ()))
+(defn build-validation-queue [conf]
+  (map-let conf [options]
+    ()))
 
 (defrecord Config [options aliases basetype docstring]
   proto/GetWithin

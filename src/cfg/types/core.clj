@@ -4,8 +4,18 @@
             [cfg.protocols :as proto]
             [clojure.core.match :refer [match]]  :reload-all))
 
+(defprotocol PType
+  (validate [me value] "Validates a value")
+  (parse [me value]    "Transforms a value in some way")
+  (cli-parse [me args] "Returns a tuple of [remaining-args data]")
+  (get-default [me]    "returns the default value for this type"))
 
-(def ^:dynamic *base-type* {})
+(defrecord CFGType [validator parser cli-parser default-getter]
+  PType
+  (validate [me value] (validator value))
+  (parse [me value] (parser value))
+  (cli-parse [me args] (cli-parser args))
+  (get-default [me] (default-getter)))
 
 (def recognised-keys
   #{
@@ -50,7 +60,7 @@
   [{n :take s-parse :cli-seq-parse parse :cli-parse :as typemap}]
   (case (or (and (integer? n) n) 1)
     0
-      (fn [args] [(complement (:get-default typemap)) args])
+      (fn [args] [true args])
 
     1
       (let [parser  (match [s-parse parse]
@@ -109,14 +119,15 @@
       (fn [value & args]
         (validate value)))))
 
-(defn resolve-typemap 
+(defn resolve-type
   ([base-type typevec]
-    (utils/__> (reduce merge-typemaps (flatten (concat base-type typevec)))
-      (assoc __ :get-default (make-default-getter __))
-      (assoc __ :cli-parse   (make-args-parser __))
-      (assoc __ :parse       (make-value-parser __))
-      (assoc __ :validate    (make-validator __))))
-  ([typevec] (resolve-typemap [] typevec)))
+    (map->CFGType
+      (utils/__> (reduce merge-typemaps (flatten (concat base-type typevec)))
+        (assoc __ :default-getter (make-default-getter __))
+        (assoc __ :cli-parser     (make-args-parser __))
+        (assoc __ :parser         (make-value-parser __))
+        (assoc __ :validator      (make-validator __)))))
+  ([typevec] (resolve-type [] typevec)))
 
 (defn process-mixins [ms]
   (vec
