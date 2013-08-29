@@ -1,21 +1,47 @@
 (ns cfg.types
   (:require [clojure.core.match :refer [match]]))
 
-(defprotocol ProtoType
-  (validate [me value])
-  (parse [me value])
-  (get-default [me])
-  (properties [me]))
-
 (defprotocol AbstractType
   (compose [me other])
-  (finalize [me]))
+  (finalize [me])
+  (validate [me value])
+  (parse [me value])
+  (get-default [me]))
 
-(defrecord AbstractMap [properties])
-(defrecord AbstractSeq [properties])
-(defrecord AbstractVal [properties])
+(defrecord MapType [properties parser validator default-getter]
+  AbstractType
+  (validate [me value] (validator value))
+  (parse [me value] (parser value))
+  (get-default [me] (default-getter)))
+
+(defrecord SeqType [properties-list properties parser validator default-getter]
+  AbstractType
+  (validate [me value] (validator value))
+  (parse [me value] (parser value))
+  (get-default [me] (default-getter)))
+
+(defrecord ValType [properties-list properties parser validator default-getter]
+  AbstractType
+  (validate [me value] (validator value))
+  (parse [me value] (parser value))
+  (get-default [me] (default-getter)))
 
 (defrecord AbstractTypeProperty [])
+
+(defn merge-type-properties [a b]
+  (loop [acc a [[k v :as e] & more] (seq b)]
+    (if e
+      (case k
+        :add-parser
+          (recur (update-in acc [:parsers] (fnil conj []) v) more)
+        :parse
+          (recur (assoc acc :parsers [v]) more)
+        :add-validator
+          (recur (update-in acc [:validators] (fnil conj []) v) more)
+        :validate
+          (recur (assoc acc :parsers [v]) more)
+        (recur (conj acc e) more))
+      acc)))
 
 (defn add-validator [abstype validator]
   (update-in abstype [:properties]
@@ -41,39 +67,87 @@
         [k (map-merge v (m1 k))]
         [k v]))))
 
-(extend-type AbstractMap
+(defn make-parser [{parsers :parsers}]
+  (if (empty? parsers)
+    identity
+    (apply comp (reverse parsers))))
+
+(defn make-validator [{validators :validators}]
+  (if (empty? validators)
+    (constantly true)
+    (apply every-pred validators)))
+
+(defn make-default-getter [{generate :gen-default default :default :as props}]
+  (if generate
+    generate
+    (if (contains? props :default)
+      (constantly default)
+      (constantly nil))))
+
+
+(extend-type MapType
   AbstractType
   (compose [me other]
-    (if (instance? AbstractMap other)
-      (->AbstractMap (apply map-merge (map :properties [me other])))
-      (throw (Exception.
+    (cond
+      (instance? MapType other)
+        (->MapType (apply map-merge (map :properties [me other])) nil nil nil)
+      :else (throw (Exception.
                (str "Map types are only composable with other map types"))))))
 
-(extend-type AbstractSeq
+(extend-type SeqType
   AbstractType
   (compose [me other]
     (cond
-      (instance? AbstractSeq other)
-        (->AbstractSeq (apply into (map :properties [me other])))
+      (instance? SeqType other)
+        (->SeqType (apply into (map :properties-list [me other]))
+          nil nil nil nil)
+      (instance? ValType other)
+        (->SeqType  (into (:properties-list me other)
+                      (concat
+                        (for [validator (:validators (:properties other))]
+                          (->AbstractTypeProperty {:add-validator validator}))
+                        (for [parser (:parsers (:properties other))]
+                          (->AbstractTypeProperty {:add-parser parser}))))
+          nil nil nil nil)
       (satisfies? AbstractType other)
         (add-parser-and-validator me other)
       (instance? AbstractTypeProperty other)
         (update-in me [:properties] conj other)
       :else
-        (throw (Exception. (str "Type " (type other) " is not composable."))))))
+        (throw (Exception. (str "Type " (type other) " is not composable.")))))
 
-(extend-type AbstractVal
+  (finalize [{properties-list :properties-list}]
+    (let [properties (reduce merge-type-properties properties-list)
+          parser (make-parser properties)
+          validator (make-validator)]
+      (->ValType
+        properties-list
+        properties
+        #(mapv parser %)
+        #(mapv validator %)
+        (make-default-getter properties)))))
+
+(extend-type ValType
   AbstractType
   (compose [me other]
     (cond
-      (instance? AbstractVal other)
-        (->AbstractVal (apply into (map :properties [me other])))
+      (instance? ValType other)
+        (->ValType (apply into (map :properties-list [me other]))
+          nil nil nil nil)
       (satisfies? AbstractType other)
         (add-parser-and-validator me other)
       (instance? AbstractTypeProperty other)
         (update-in me [:properties] conj other)
       :else
-        (throw (Exception. (str "Type " (type other) " is not composable."))))))
+        (throw (Exception. (str "Type " (type other) " is not composable.")))))
+
+  (finalize [{properties-list :properties-list}]
+    (let [properties (reduce merge-type-properties properties-list)]
+      (->ValType (:properties-list me)
+        properties
+        (make-parser properties)
+        (make-validator properties)
+        (make-default-getter properties)))))
 
 (defn process-mixins [ms]
   (vec
@@ -96,25 +170,27 @@
     [(or (process-mixins mixins) []) description remaining]))
 
 (defn process-description-and-fields [description fields]
-  (let [properties (apply hash-map fields)]
+  (let [properties (->AbstractTypeProperty (apply hash-map fields))]
     (if description
       (assoc properties :description description)
       properties)))
 
 (defn valtype [& args]
   (let [[mixins description fields] (get-mixins-and-docstring args)]
-    (->AbstractVal
-      (conj mixins (process-description-and-fields description fields)))))
+    (finalize
+      (reduce compose (->ValType [] nil nil nil nil)
+        (conj mixins (process-description-and-fields description fields))))))
 
 (defn seqtype [& args]
   (let [[mixins description fields] (get-mixins-and-docstring args)]
-    (->AbstractSeq
-      (conj mixins (process-description-and-fields description fields)))))
+    (finalize
+      (reduce compose (->SeqType [] nil nil nil nil)
+        (conj mixins (process-description-and-fields description fields))))))
 
 (defn process-map-field [mixins field]
   (cond
     (satisfies? AbstractType field)
-      (finalize field)
+      field
     (vector? field)
       (finalize (valtype (into mixins field)))
     (map? field)
@@ -123,13 +199,19 @@
 (defn maptype [& args]
   (let [[mixins description fields] (get-mixins-and-docstring args)
         properties (process-description-and-fields description (butlast fields))
-        structure  (update-with (partial process-map-field mixins) (last (fields)))]
-    (->AbstractMap (assoc properties :structure structure))))
+        base-type  (process-mixins (or (:base-type properties) []))
+        structure  (update-with (partial process-map-field base-type)
+                     (last (fields)))]
+    (finalize
+      (reduce compose (->MapType {} nil nil nil)
+        (conj mixins
+          (->MapType (assoc properties :structure structure) nil nil nil))))))
 
 (valtype [mixins] "description"
   :keys :values)
 
-(maptype [integer]
+(maptype
+  :base-type [integer]
   :allow-other-fields ifn/true
   {
     :steve (valtype [integer]
