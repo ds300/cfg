@@ -102,6 +102,8 @@
       (reverse sorted)
       (throw (Exception. "Cyclical dependency detected")))))
 
+;;;;; NEEED TO SORT OUT EXCEPTIONS LIKE NOW
+
 (defn make-map-field-parsers [structure key-paths]
   (for [key-path key-paths]
     (let [field-type (get-in structure key-path)
@@ -115,7 +117,10 @@
                   m)
                 m))]
       (fn [m]
-        (f key-path m)))))
+        (try
+          (f key-path m)
+        (catch Exception e
+          (throw-parse-error key-path (get-in m key-path) e)))))))
 
 (defn make-map-field-validators [structure key-paths]
   (for [key-path key-paths]
@@ -133,12 +138,30 @@
                           (apply cohort-fn
                             (map (partial get-in map-value) cohort-fields)))))]
       (fn [value]
-        (loop [m value [k & ks] key-path]
-          (if (and (map? m) (contains? m k))
-            (if ks
-              (recur (m k) ks)
-              (validate field-type (m k)))
-            (not required?)))))))
+        (try
+          (if-let [result (loop [m value [k & ks] key-path]
+                            (if (and (map? m) (contains? m k))
+                              (if ks
+                                (recur (m k) ks)
+                                (validator value (m k)))
+                              (not required?)))]
+            true
+            (throw-validation-error key-path (get-in value key-path)))
+          (catch Exception e
+            (throw-validation-error key-path (get-in value key-path) e)))))))
+
+(def ^:dynamic *emit-validation-errors*)
+
+(def parsing-strategies
+  {
+    :quick (fn [parsers] #(reduce (fn [value f] (f value)) % parsers))
+    :slow 
+      (fn [parsers]
+        (fn [value]
+          (loop [errors [] acc value [parser & more] parsers]
+            (try ()))))
+    })
+
 
 (defrecord MapType [properties parser validator default-getter]
   AbstractType
@@ -329,24 +352,3 @@
   csv-int)
 
 (validate csv-int (parse csv-int "3,4,5"))
-; (valtype [mixins] "description"
-;   :keys :values)
-
-; (maptype
-;   :base-type [integer]
-;   :allow-other-fields ifn/true
-;   :structure
-;   {
-;     :steve (valtype [integer]
-;             :validate-with-fields [[:jones]]
-;             :validate-with-fn (fn [steve jones] (= "steve" "jones")))
-;     :jones [integer {
-;         :validate-with-fields
-;         :validate-with-fn
-;       }]})
-
-; (maptype [integer]
-;   :allow-other-fields true
-;   (field :jones [even?]
-;     :validate-with-fields [[:steve]])
-;   (fields ))
