@@ -97,8 +97,48 @@
 
 (defn get-topological-sort [structure]
   (let [graph (make-graph structure)
-        sorted (kahn-sort graph)]))
+        sorted (kahn-sort graph)]
+    (if sorted
+      (reverse sorted)
+      (throw (Exception. "Cyclical dependency detected")))))
 
+(defn make-map-field-parsers [structure key-paths]
+  (for [key-path key-paths]
+    (let [field-type (get-in structure key-path)
+          parser (partial parse field-type)
+          f (fn f [[k & ks] m]
+              (if k ;; probably unneccesary. do a check dave
+                (if (and (map? m) (contains? m k))
+                  (if ks
+                    (assoc m k (f ks (m k)))
+                    (assoc m k (parser (m k))))
+                  m)
+                m))]
+      (fn [m]
+        (f key-path m)))))
+
+(defn make-map-field-validators [structure key-paths]
+  (for [key-path key-paths]
+    (let [field-type (get-in structure key-path)
+          field-properties (:properties field-type)
+          cohort-fields (:validate-with-fields field-properties)
+          cohort-fn (:validate-with-fn field-properties)
+          required? (:required field-properties)
+          validator (if (empty? cohort-fields) 
+                      (fn [map-value field-value]
+                        (validate field-type field-value))
+                      (fn [map-value field-value]
+                        (and
+                          (validate field-type field-value)
+                          (apply cohort-fn
+                            (map (partial get-in map-value) cohort-fields)))))]
+      (fn [value]
+        (loop [m value [k & ks] key-path]
+          (if (and (map? m) (contains? m k))
+            (if ks
+              (recur (m k) ks)
+              (validate field-type (m k)))
+            (not required?)))))))
 
 (defrecord MapType [properties parser validator default-getter]
   AbstractType
@@ -117,7 +157,18 @@
                  (str "Map types are only composable with other map types")))))
 
   (finalize [me]
-    me))
+    (if-let [structure (:structure properties)]
+      (let [sorted-keys (get-topological-sort structure)
+            parsers  (make-map-field-parsers structure sorted-keys)
+            parser #(reduce (fn [value f] (f value)) % parsers)
+            validators (make-map-field-validators structure sorted-keys)]
+        )
+
+      (->MapType
+        properties
+        (partial update-with (partial parse (:base-type properties)))
+        #(every? (partial validate (:base-type properties)) (keys %))
+        (constantly {})))))
 
 
 (defrecord ValType [properties-list properties parser validator default-getter]
@@ -265,7 +316,7 @@
 
 (def-valtype matrix [[[integer]]])
 
-(validate matrix [9 [4 5 6] [7 8 9]])
+(validate matrix [[3] [4 5 6] [7 8 9]])
 
 (def-valtype csv
   :parse #(clojure.string/split % #","))
