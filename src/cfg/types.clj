@@ -1,32 +1,28 @@
 (ns cfg.types
-  (:require [clojure.core.match :refer [match]]))
+  (:require [clojure.core.match :refer [match]]
+            [alandipert.kahn :refer [kahn-sort]]))
 
 (defprotocol AbstractType
-  (compose [me other])
-  (finalize [me])
   (validate [me value])
   (parse [me value])
-  (get-default [me]))
-
-(defrecord MapType [properties parser validator default-getter]
-  AbstractType
-  (validate [me value] (validator value))
-  (parse [me value] (parser value))
-  (get-default [me] (default-getter)))
-
-(defrecord SeqType [properties-list properties parser validator default-getter]
-  AbstractType
-  (validate [me value] (validator value))
-  (parse [me value] (parser value))
-  (get-default [me] (default-getter)))
-
-(defrecord ValType [properties-list properties parser validator default-getter]
-  AbstractType
-  (validate [me value] (validator value))
-  (parse [me value] (parser value))
-  (get-default [me] (default-getter)))
+  (get-default [me])
+  (compose [me other])
+  (finalize [me]))
 
 (defrecord AbstractTypeProperty [])
+
+(defn abstract-type-property [m]
+  (merge (->AbstractTypeProperty) m))
+
+(def ^:dynamic *wrap-validators* true)
+
+(defn validator-wrapper [f]
+  (if *wrap-validators*
+    (fn [value]
+      (try
+        (f value)
+        (catch Exception e false)))
+    f))
 
 (defn merge-type-properties [a b]
   (loop [acc a [[k v :as e] & more] (seq b)]
@@ -44,18 +40,17 @@
       acc)))
 
 (defn add-validator [abstype validator]
-  (update-in abstype [:properties]
-    conj (->AbstractTypeProperty {:add-validator validator})))
+  (update-in abstype [:properties-list]
+    conj (abstract-type-property {:add-validator validator})))
 
 (defn add-parser [abstype parser]
-  (update-in abstype [:properties]
-    conj (->AbstractTypeProperty {:add-parser parser})))
+  (update-in abstype [:properties-list]
+    conj (abstract-type-property {:add-parser parser})))
 
-(defn add-parser-and-validator [abstype-a abstype-b]
-  (let [t (finalize abstype-b)]
-    (-> abstype-a
-      (add-validator (partial validate t))
-      (add-parser    (partial parse t)))))
+(defn add-parser-and-validator [type-a type-b]
+  (-> type-a
+    (add-validator (partial validate type-b))
+    (add-parser    (partial parse type-b))))
 
 (defn update-with [f m]
   (into {} (for [[k v] m] [k (f v)])))
@@ -84,51 +79,53 @@
       (constantly default)
       (constantly nil))))
 
+(defn all-key-paths [m]
+  (apply concat
+    (for [[k v] m]
+      (if (and (not (satisfies? AbstractType v)) (map? v))
+        (map #(into [k] %) (all-key-paths v))
+        [[k]]))))
 
-(extend-type MapType
-  AbstractType
-  (compose [me other]
-    (if
-      (instance? MapType other)
-        (->MapType (apply map-merge (map :properties [me other])) nil nil nil)
-      (throw (Exception.
-               (str "Map types are only composable with other map types"))))))
+(defn make-graph [structure]
+  (into {}
+    (for [ks (all-key-paths structure)]
+      (let [withs (get-in structure
+                    (into ks [:properties :validate-with-fields]))]
+      (if (empty? withs)
+        [ks #{}]
+        [ks (into #{} withs)])))))
 
-(extend-type SeqType
+(defn get-topological-sort [structure]
+  (let [graph (make-graph structure)
+        sorted (kahn-sort graph)]))
+
+
+(defrecord MapType [properties parser validator default-getter]
   AbstractType
+  (validate [me value] (validator value))
+  (parse [me value] (parser value))
+  (get-default [me] (default-getter))
+
   (compose [me other]
     (cond
-      (instance? SeqType other)
-        (->SeqType (apply into (map :properties-list [me other]))
-          nil nil nil nil)
-      (instance? ValType other)
-        (->SeqType  (into (:properties-list me)
-                      (concat
-                        (for [validator (:validators (:properties other))]
-                          (->AbstractTypeProperty {:add-validator validator}))
-                        (for [parser (:parsers (:properties other))]
-                          (->AbstractTypeProperty {:add-parser parser}))))
-          nil nil nil nil)
-      (satisfies? AbstractType other)
-        (add-parser-and-validator me other)
+      (instance? MapType other)
+        (->MapType (apply map-merge (map :properties [me other])) nil nil nil)
       (instance? AbstractTypeProperty other)
-        (update-in me [:properties] conj other)
+        (->MapType (merge (:properties me) other) nil nil nil)
       :else
-        (throw (Exception. (str "Type " (type other) " is not composable.")))))
+        (throw (Exception.
+                 (str "Map types are only composable with other map types")))))
 
-  (finalize [{properties-list :properties-list}]
-    (let [properties (reduce merge-type-properties properties-list)
-          parser (make-parser properties)
-          validator (make-validator)]
-      (->ValType
-        properties-list
-        properties
-        #(mapv parser %)
-        #(mapv validator %)
-        (make-default-getter properties)))))
+  (finalize [me]
+    me))
 
-(extend-type ValType
+
+(defrecord ValType [properties-list properties parser validator default-getter]
   AbstractType
+  (validate [me value] (validator value))
+  (parse [me value] (parser value))
+  (get-default [me] (default-getter))
+
   (compose [me other]
     (cond
       (instance? ValType other)
@@ -137,17 +134,57 @@
       (satisfies? AbstractType other)
         (add-parser-and-validator me other)
       (instance? AbstractTypeProperty other)
-        (update-in me [:properties] conj other)
+        (update-in me [:properties-list] conj other)
       :else
         (throw (Exception. (str "Type " (type other) " is not composable.")))))
 
-  (finalize [{properties-list :properties-list}]
-    (let [properties (reduce merge-type-properties properties-list)]
-      (->ValType (:properties-list me)
+
+  (finalize [me]
+    (let [properties (reduce merge-type-properties {} properties-list)]
+      (->ValType properties-list
         properties
         (make-parser properties)
-        (make-validator properties)
+        (validator-wrapper (make-validator properties))
         (make-default-getter properties)))))
+
+(defrecord SeqType [properties-list properties parser validator default-getter]
+  AbstractType
+  (validate [me value] (validator value))
+  (parse [me value] (parser value))
+  (get-default [me] (default-getter))
+
+
+  (compose [me other]
+    (cond
+      (instance? ValType other)
+        (->SeqType  (into (:properties-list me)
+                      (concat
+                        (for [validator (:validators (:properties other))]
+                          (abstract-type-property {:add-validator validator}))
+                        (for [parser (:parsers (:properties other))]
+                          (abstract-type-property {:add-parser parser}))))
+          nil nil nil nil)
+      (satisfies? AbstractType other)
+        (add-parser-and-validator me other)
+      (instance? AbstractTypeProperty other)
+        (update-in me [:properties-list] conj other)
+      :else
+        (throw (Exception. (str "Type " (type other) " is not composable.")))))
+
+
+  (finalize [{properties-list :properties-list}]
+    (let [properties (reduce merge-type-properties {} properties-list)
+          parser (make-parser properties)
+          validator (make-validator properties)]
+      (->SeqType
+        properties-list
+        properties
+        #(mapv parser %)
+        (validator-wrapper #(every? validator %))
+        (make-default-getter properties)))))
+
+
+(declare seqtype)
 
 (defn process-mixins [ms]
   (vec
@@ -156,11 +193,11 @@
         (satisfies? AbstractType m)
           m
         (map? m)
-          (->AbstractTypeProperty {:add-parser m})
+          (abstract-type-property {:add-parser m})
         (vector? m)
           (seqtype m)
         (instance? clojure.lang.IFn m)
-          (->AbstractTypeProperty {:add-validator m})
+          (abstract-type-property {:add-validator m})
         :else
           (throw (Exception. (str "Type " (type m) " cannot be mixed in")))))))
 
@@ -170,7 +207,7 @@
     [(or (process-mixins mixins) []) description remaining]))
 
 (defn process-description-and-fields [description fields]
-  (let [properties (->AbstractTypeProperty (apply hash-map fields))]
+  (let [properties (abstract-type-property (apply hash-map fields))]
     (if description
       (assoc properties :description description)
       properties)))
@@ -207,22 +244,58 @@
         (conj mixins
           (->MapType (assoc properties :structure structure) nil nil nil))))))
 
-(valtype [mixins] "description"
-  :keys :values)
+(defmacro def-valtype [nm & args]
+  `(def ~nm (valtype ~@args)))
 
-(maptype
-  :base-type [integer]
-  :allow-other-fields ifn/true
-  {
-    :steve (valtype [integer]
-            :validate-with-fields [[:jones]]
-            :validate-with-fn (fn [steve jones] (= "steve" "jones")))
-    :jones {
+(defmacro def-maptype [nm & args]
+  `(def ~nm (maptype ~@args)))
 
-      }})
+(defmacro def-seqtype [nm & args]
+  `(def ~nm (seqtype ~@args)))
 
-(maptype [integer]
-  :allow-other-fields true
-  (field :jones [even?]
-    :validate-with-fields [[:steve]])
-  (fields ))
+(def-valtype integer [integer?]
+  :parse  (fn [x]
+            (if (integer? x)
+              x
+              (Integer. x))))
+
+(def-valtype even-int [integer even?])
+
+(def-seqtype int-seq [integer])
+
+(def-valtype matrix [[[integer]]])
+
+(validate matrix [9 [4 5 6] [7 8 9]])
+
+(def-valtype csv
+  :parse #(clojure.string/split % #","))
+
+(parse int-seq '(3 "3" 5 6 7))
+
+(def-valtype csv-int [csv [integer]])
+
+(clojure.pprint/pprint
+  csv-int)
+
+(validate csv-int (parse csv-int "3,4,5"))
+; (valtype [mixins] "description"
+;   :keys :values)
+
+; (maptype
+;   :base-type [integer]
+;   :allow-other-fields ifn/true
+;   :structure
+;   {
+;     :steve (valtype [integer]
+;             :validate-with-fields [[:jones]]
+;             :validate-with-fn (fn [steve jones] (= "steve" "jones")))
+;     :jones [integer {
+;         :validate-with-fields
+;         :validate-with-fn
+;       }]})
+
+; (maptype [integer]
+;   :allow-other-fields true
+;   (field :jones [even?]
+;     :validate-with-fields [[:steve]])
+;   (fields ))
