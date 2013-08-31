@@ -241,7 +241,8 @@
             validator (make-map-validator structure)
             validator (if (and (contains? properties :allow-other-fields)
                                (not (:allow-other-fields properties)))
-                        (wrap-map-validator:no-other-fields validator)
+                        (wrap-map-validator:no-other-fields validator
+                          (all-key-paths structure))
                         validator)
             default-getter (make-default-getter properties
                              (make-map-default-getter structure))]
@@ -419,6 +420,7 @@
 (def-valtype string [string?])
 
 (def-maptype tweet
+  :allow-other-fields false
   :structure
   {
     :text [string]
@@ -426,4 +428,4 @@
     :id (valtype [integer] :required true)
     })
 
-(validate tweet {:text "scrotii are fun to poke" :id 7 :tokens ["yo"]})
+(validate tweet {:cheese false :text "scrotii are fun to poke" :id 7 :tokens ["yo"]})
