@@ -6,6 +6,8 @@
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [swiss-arrows "0.6.0"]
                  [org.clojure/core.match "0.2.0-rc5"]]
+
+  :java-source-paths ["src/cfg/java"]
   :profiles {
     :user {:plugins [[lein-midje "3.0.0"]]}
     :dev {

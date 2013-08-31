@@ -1,6 +1,7 @@
 (ns cfg.types
   (:require [clojure.core.match :refer [match]]
-            [alandipert.kahn :refer [kahn-sort]]))
+            [alandipert.kahn :refer [kahn-sort]])
+  (:import  cfg.java.CFGException))
 
 (defprotocol TypeProtocol
   (validate [me value])
@@ -24,6 +25,22 @@
         (if *emit-validation-errors*
           (throw e)
           false)))))
+
+(defn throw-error [msg] (throw (CFGException. msg nil nil nil)))
+
+(defn throw-parse-error 
+  ([key-path bad-value]
+    (throw-parse-error key-path bad-value nil))
+  ([key-path bad-value original-exception]
+    (throw
+      (CFGException. "Parsing failed." key-path bad-value original-exception))))
+
+(defn throw-validation-error
+  ([key-path bad-value]
+    (throw-validation-error key-path bad-value nil))
+  ([key-path bad-value original-exception]
+    (throw
+      (CFGException. "Validation failed." key-path bad-value original-exception))))
 
 (defn merge-type-properties [a b]
   (loop [acc a [[k v :as e] & more] (seq b)]
@@ -69,8 +86,9 @@
     (apply comp (reverse parsers))))
 
 (defn make-validator [{validators :validators}]
-  (if (empty? validators)
-    (constantly true)
+  (case (count validators)
+    0 (constantly true)
+    1 (first validators)
     (apply every-pred validators)))
 
 (defn make-default-getter 
@@ -230,7 +248,7 @@
         (->MapType
           properties
           parser
-          validator
+          (validator-wrapper validator)
           default-getter))
 
       (->MapType
@@ -300,7 +318,7 @@
         properties-list
         properties
         #(mapv parser %)
-        (validator-wrapper #(every? validator %))
+        (validator-wrapper #(and (sequential? %) (every? validator %)))
         (make-default-getter properties)))))
 
 
@@ -355,10 +373,14 @@
 
 (defn maptype [& args]
   (let [[mixins description fields] (get-mixins-and-docstring args)
-        properties (process-description-and-fields description (butlast fields))
+        properties (process-description-and-fields description fields)
         base-type  (process-mixins (or (:base-type properties) []))
-        structure  (update-with (partial process-map-field base-type)
-                     (last (fields)))]
+        structure  (when-let [structure (:structure properties)]
+                     (update-with (partial process-map-field base-type)
+                       structure))
+        properties (if structure
+                     (assoc properties :structure structure)
+                     properties)]
     (finalize
       (reduce compose (->MapType {} nil nil nil)
         (conj mixins
@@ -394,7 +416,14 @@
 
 (def-valtype csv-int [csv [integer]])
 
-(clojure.pprint/pprint
-  csv-int)
+(def-valtype string [string?])
 
-(validate csv-int (parse csv-int "3,4,5"))
+(def-maptype tweet
+  :structure
+  {
+    :text [string]
+    :tokens [[string]]
+    :id (valtype [integer] :required true)
+    })
+
+(validate tweet {:text "scrotii are fun to poke" :id 7 :tokens ["yo"]})
