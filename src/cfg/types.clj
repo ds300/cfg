@@ -2,7 +2,7 @@
   (:require [clojure.core.match :refer [match]]
             [alandipert.kahn :refer [kahn-sort]]))
 
-(defprotocol AbstractType
+(defprotocol TypeProtocol
   (validate [me value])
   (parse [me value])
   (get-default [me])
@@ -14,15 +14,16 @@
 (defn abstract-type-property [m]
   (merge (->AbstractTypeProperty) m))
 
-(def ^:dynamic *wrap-validators* true)
+(def ^:dynamic *emit-validation-errors* false)
 
-(defn validator-wrapper [f]
-  (if *wrap-validators*
-    (fn [value]
-      (try
-        (f value)
-        (catch Exception e false)))
-    f))
+(defn validator-wrapper [validator]
+  (fn [value]
+    (try
+      (validator value)  
+      (catch Exception e
+        (if *emit-validation-errors*
+          (throw e)
+          false)))))
 
 (defn merge-type-properties [a b]
   (loop [acc a [[k v :as e] & more] (seq b)]
@@ -72,19 +73,31 @@
     (constantly true)
     (apply every-pred validators)))
 
-(defn make-default-getter [{generate :gen-default default :default :as props}]
-  (if generate
-    generate
-    (if (contains? props :default)
-      (constantly default)
-      (constantly nil))))
+(defn make-default-getter 
+  ([m] (make-default-getter m (constantly nil)))
+  ([{generate :gen-default default :default :as props} otherwise]
+    (if generate
+      generate
+      (if (contains? props :default)
+        (constantly default)
+        otherwise))))
 
 (defn all-key-paths [m]
   (apply concat
     (for [[k v] m]
-      (if (and (not (satisfies? AbstractType v)) (map? v))
+      (if (and (not (satisfies? TypeProtocol v)) (map? v))
         (map #(into [k] %) (all-key-paths v))
         [[k]]))))
+
+(defn dissoc-in [m [k & ks]]
+  (if ks
+    (if-let [child (m k)]
+      (let [r (dissoc-in child ks)]
+        (if (empty? r)
+          (dissoc m k)
+          (assoc m k r)))
+      m)
+    (dissoc m k)))
 
 (defn make-graph [structure]
   (into {}
@@ -104,8 +117,8 @@
 
 ;;;;; NEEED TO SORT OUT EXCEPTIONS LIKE NOW
 
-(defn make-map-field-parsers [structure key-paths]
-  (for [key-path key-paths]
+(defn make-map-field-parsers [structure]
+  (for [key-path (all-key-paths structure)]
     (let [field-type (get-in structure key-path)
           parser (partial parse field-type)
           f (fn f [[k & ks] m]
@@ -122,8 +135,17 @@
         (catch Exception e
           (throw-parse-error key-path (get-in m key-path) e)))))))
 
-(defn make-map-field-validators [structure key-paths]
-  (for [key-path key-paths]
+(defn make-map-parser [structure]
+  (let [parsers (make-map-field-parsers structure)]
+    (fn [value]
+      (reduce 
+        (fn [acc f]
+          (f acc))
+        value
+        parsers))))
+
+(defn make-map-field-validators [structure]
+  (for [key-path (get-topological-sort structure)]
     (let [field-type (get-in structure key-path)
           field-properties (:properties field-type)
           cohort-fields (:validate-with-fields field-properties)
@@ -139,32 +161,48 @@
                             (map (partial get-in map-value) cohort-fields)))))]
       (fn [value]
         (try
-          (if-let [result (loop [m value [k & ks] key-path]
-                            (if (and (map? m) (contains? m k))
-                              (if ks
-                                (recur (m k) ks)
-                                (validator value (m k)))
-                              (not required?)))]
-            true
+          (or
+            (loop [m value [k & ks] key-path]
+              (if (and (map? m) (contains? m k))
+                (if ks
+                  (recur (m k) ks)
+                  (validator value (m k)))
+                (not required?)))
             (throw-validation-error key-path (get-in value key-path)))
           (catch Exception e
             (throw-validation-error key-path (get-in value key-path) e)))))))
 
-(def ^:dynamic *emit-validation-errors*)
+(defn make-map-validator [structure]
+  (let [validators (make-map-field-validators structure)]
+    (fn [value]
+      (loop [[v & more] validators]
+        (if v
+          (if (v value)
+            (recur more)
+            false)
+          true)))))
 
-(def parsing-strategies
-  {
-    :quick (fn [parsers] #(reduce (fn [value f] (f value)) % parsers))
-    :slow 
-      (fn [parsers]
-        (fn [value]
-          (loop [errors [] acc value [parser & more] parsers]
-            (try ()))))
-    })
+(defn wrap-map-validator:no-other-fields [validator key-paths]
+  (fn [value]
+    (if (validator value)
+      (let [reduced (reduce dissoc-in value key-paths)]
+        (if (empty? reduced)
+          true
+          (throw (Exception. (str "Unauthorized fields in map: "(all-key-paths reduced))))))
+      false)))
+
+
+(defn make-map-default-getter [structure]
+  (let [key-paths (all-key-paths structure)]
+    (fn []
+      (reduce (partial apply assoc-in) {}
+        (map (juxt identity #(get-default (get-in structure %))) key-paths)))))
+
+
 
 
 (defrecord MapType [properties parser validator default-getter]
-  AbstractType
+  TypeProtocol
   (validate [me value] (validator value))
   (parse [me value] (parser value))
   (get-default [me] (default-getter))
@@ -181,11 +219,19 @@
 
   (finalize [me]
     (if-let [structure (:structure properties)]
-      (let [sorted-keys (get-topological-sort structure)
-            parsers  (make-map-field-parsers structure sorted-keys)
-            parser #(reduce (fn [value f] (f value)) % parsers)
-            validators (make-map-field-validators structure sorted-keys)]
-        )
+      (let [parser (make-map-parser structure)
+            validator (make-map-validator structure)
+            validator (if (and (contains? properties :allow-other-fields)
+                               (not (:allow-other-fields properties)))
+                        (wrap-map-validator:no-other-fields validator)
+                        validator)
+            default-getter (make-default-getter properties
+                             (make-map-default-getter structure))]
+        (->MapType
+          properties
+          parser
+          validator
+          default-getter))
 
       (->MapType
         properties
@@ -195,7 +241,7 @@
 
 
 (defrecord ValType [properties-list properties parser validator default-getter]
-  AbstractType
+  TypeProtocol
   (validate [me value] (validator value))
   (parse [me value] (parser value))
   (get-default [me] (default-getter))
@@ -205,7 +251,7 @@
       (instance? ValType other)
         (->ValType (apply into (map :properties-list [me other]))
           nil nil nil nil)
-      (satisfies? AbstractType other)
+      (satisfies? TypeProtocol other)
         (add-parser-and-validator me other)
       (instance? AbstractTypeProperty other)
         (update-in me [:properties-list] conj other)
@@ -222,7 +268,7 @@
         (make-default-getter properties)))))
 
 (defrecord SeqType [properties-list properties parser validator default-getter]
-  AbstractType
+  TypeProtocol
   (validate [me value] (validator value))
   (parse [me value] (parser value))
   (get-default [me] (default-getter))
@@ -238,7 +284,7 @@
                         (for [parser (:parsers (:properties other))]
                           (abstract-type-property {:add-parser parser}))))
           nil nil nil nil)
-      (satisfies? AbstractType other)
+      (satisfies? TypeProtocol other)
         (add-parser-and-validator me other)
       (instance? AbstractTypeProperty other)
         (update-in me [:properties-list] conj other)
@@ -264,7 +310,7 @@
   (vec
     (for [m ms]
       (cond
-        (satisfies? AbstractType m)
+        (satisfies? TypeProtocol m)
           m
         (map? m)
           (abstract-type-property {:add-parser m})
@@ -300,7 +346,7 @@
 
 (defn process-map-field [mixins field]
   (cond
-    (satisfies? AbstractType field)
+    (satisfies? TypeProtocol field)
       field
     (vector? field)
       (finalize (valtype (into mixins field)))
