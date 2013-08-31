@@ -1,6 +1,5 @@
 (ns cfg.types
-  (:require [clojure.core.match :refer [match]]
-            [alandipert.kahn :refer [kahn-sort]])
+  (:require [alandipert.kahn :refer [kahn-sort]])
   (:import  cfg.java.CFGException))
 
 (defprotocol TypeProtocol
